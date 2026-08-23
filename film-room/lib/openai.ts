@@ -76,11 +76,11 @@ Length rule: ${b.editorialRules.reelLengthRule}
 Music palette: ${b.musicPolicy.soundPalette.join("; ")}
 Music usage: ${b.musicPolicy.usageRule}
 Footage rights policy: allowed=${b.mediaSourcing.allowedSourceTypes.join("; ")}; caution=${b.mediaSourcing.cautionSourceTypes.join("; ")}; banned=${b.mediaSourcing.bannedSourceTypes.join("; ")}.
-Do not confuse popularity with story quality. Research what fans/media actually cared about. Prefer recognizable, culturally sticky moments over random athletic plays. Never invent a timestamp.`;
+Do not confuse popularity with story quality. Prefer recognizable, culturally sticky moments over random athletic plays. Never invent a timestamp.`;
 }
 
 function parseJson<T>(text: string, fallback: T): T {
-  const cleaned = text.trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+  const cleaned = text.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
   try {
     return JSON.parse(cleaned) as T;
   } catch {
@@ -110,21 +110,76 @@ export type TrendStory = {
   fanAllegianceLogic: string;
 };
 
+function sanitizeStories(stories: TrendStory[]): TrendStory[] {
+  return (stories ?? [])
+    .filter((s) => s && s.headline && (s.sport === "football" || s.sport === "basketball"))
+    .map((s) => ({
+      ...s,
+      summary: s.summary ?? "",
+      whyToday: s.whyToday ?? "Evergreen Film Room story with seasonal relevance.",
+      viewerFeeling: s.viewerFeeling ?? "nostalgia, anticipation, or connection",
+      searchQueries: Array.isArray(s.searchQueries) && s.searchQueries.length ? s.searchQueries.slice(0, 3) : [s.headline],
+      popularityEvidence: Array.isArray(s.popularityEvidence) ? s.popularityEvidence : [],
+      trendSources: Array.isArray(s.trendSources) ? s.trendSources.filter((x) => x?.url) : [],
+      template: ["MOMENT", "FEELING", "STORY", "TAKE"].includes(s.template) ? s.template : "STORY",
+      fanAllegianceLogic: s.fanAllegianceLogic ?? "Keep fan allegiance coherent unless rivalry conflict is the story.",
+    }))
+    .slice(0, 10);
+}
+
 export async function researchTodaysStories(brandBrain: BrandBrain, dateIso: string): Promise<TrendStory[]> {
-  const prompt = `${brainPrompt(brandBrain)}
-Today is ${dateIso}. Research the CURRENT college football and college basketball landscape using web search. Check major media and broad conversation, especially ESPN, Bleacher Report, AP/Reuters, NCAA/conference/team coverage, current scores/results, rankings, upcoming marquee games, player trends, anniversaries and viral/culturally sticky moments.
+  const currentPrompt = `${brainPrompt(brandBrain)}
+Today is ${dateIso}.
 
-Return the 10 strongest Reel story candidates for Film Room. The page is trying to grow followers and become monetizable, so each candidate needs a reason people care TODAY and a reason someone might share/follow. It can be current or a flashback if today's calendar/story makes the flashback relevant.
+Build Film Room's editorial slate for TODAY. Start by researching the current college football and college basketball landscape with web search: major media coverage, team/conference news, rankings, preseason/offseason storylines, recruiting or roster developments, upcoming marquee games, anniversaries, rivalries, iconic players, coaching storylines, viral moments, and culturally sticky college-sports conversations.
 
-Return ONLY JSON: {"stories":[{"headline":"...","sport":"football|basketball","summary":"...","whyToday":"...","viewerFeeling":"...","searchQueries":["YouTube query 1","query 2"],"popularityEvidence":["specific evidence"],"trendSources":[{"label":"ESPN","url":"https://..."}],"template":"MOMENT|FEELING|STORY|TAKE","fanAllegianceLogic":"..."}]}`;
+IMPORTANT: Film Room must publish even on a quiet sports day. Do NOT return zero stories just because no games are happening today. If current news is thin, deliberately pivot to high-value evergreen or seasonal ideas that feel timely now: countdown-to-season stories, iconic openings, traditions, stadium atmosphere, rivalry history, "this date in college sports," legendary plays, player arcs, uniforms, entrances, fan culture, or past moments that connect naturally to the present season. Current stories are the discovery engine; history and feeling are the emotional engine.
 
-  const text = await claude(prompt, {
+Return exactly 10 strong candidates when possible. At least 4 should be usable even if today's news cycle is quiet. Each idea must have a clear reason it belongs on the channel now and YouTube search queries likely to surface usable source footage.
+
+Return ONLY valid JSON with no prose before or after it:
+{"stories":[{"headline":"...","sport":"football|basketball","summary":"...","whyToday":"...","viewerFeeling":"...","searchQueries":["YouTube query 1","YouTube query 2"],"popularityEvidence":["specific evidence or seasonal rationale"],"trendSources":[{"label":"source","url":"https://..."}],"template":"MOMENT|FEELING|STORY|TAKE","fanAllegianceLogic":"..."}]}`;
+
+  let firstText = "";
+  try {
+    firstText = await claude(currentPrompt, {
+      model: RESEARCH_MODEL,
+      webSearch: true,
+      maxTokens: 7000,
+    });
+  } catch (error) {
+    console.warn("Web-grounded trend research failed; falling back to editorial ideation.", error);
+  }
+
+  const first = sanitizeStories(parseJson<{ stories: TrendStory[] }>(firstText, { stories: [] }).stories ?? []);
+  if (first.length >= 4) return first;
+
+  const fallbackPrompt = `${brainPrompt(brandBrain)}
+Today is ${dateIso}. The live news scan did not produce enough usable stories. Act as an elite college-sports social editor and create a full publishing slate anyway.
+
+Generate 10 Film Room ideas that are NOT dependent on a game happening today. Use the time of year and the channel identity. Favor ideas with abundant searchable YouTube footage and strong emotional/share potential. Mix:
+- anticipation for the coming/current football or basketball season,
+- iconic moments tied to the calendar or season,
+- stadium/entrance/tradition atmosphere,
+- rivalries and "last time they met" history,
+- legendary player or team mini-stories,
+- nostalgic moments that make old college sports feel alive,
+- current-season context when known,
+- debate/take ideas only when footage can actually support them.
+
+Do not invent breaking news, scores, rankings, injuries, or transactions. If an idea is evergreen, say so plainly in whyToday and explain the seasonal reason it works now.
+
+Return ONLY valid JSON:
+{"stories":[{"headline":"...","sport":"football|basketball","summary":"...","whyToday":"...","viewerFeeling":"...","searchQueries":["YouTube query 1","YouTube query 2"],"popularityEvidence":["evergreen/seasonal rationale"],"trendSources":[],"template":"MOMENT|FEELING|STORY|TAKE","fanAllegianceLogic":"..."}]}`;
+
+  const fallbackText = await claude(fallbackPrompt, {
     model: RESEARCH_MODEL,
-    webSearch: true,
-    maxTokens: 7000,
+    webSearch: false,
+    maxTokens: 6500,
   });
 
-  return parseJson<{ stories: TrendStory[] }>(text, { stories: [] }).stories ?? [];
+  const fallback = sanitizeStories(parseJson<{ stories: TrendStory[] }>(fallbackText, { stories: [] }).stories ?? []);
+  return fallback.length ? fallback : first;
 }
 
 export type ScoredCandidate = {
