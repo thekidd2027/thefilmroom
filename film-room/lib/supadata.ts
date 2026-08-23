@@ -1,7 +1,7 @@
 export type TranscriptChunk = {
   text: string;
-  offset: number;
-  duration: number;
+  offset: number; // milliseconds
+  duration: number; // milliseconds
   lang?: string;
 };
 
@@ -39,51 +39,32 @@ async function supadataFetch(path: string, init?: RequestInit) {
   return body;
 }
 
-function normalizeTranscript(data: any): TranscriptChunk[] {
-  if (!Array.isArray(data?.content)) return [];
-  return data.content
-    .map((c: any) => ({
-      text: String(c.text ?? ""),
-      offset: Number(c.offset ?? c.start ?? 0),
-      duration: Number(c.duration ?? 0),
-      lang: c.lang ?? data.lang,
-    }))
-    .filter((c: TranscriptChunk) => c.text.trim().length > 0);
-}
-
-function youtubeId(url: string) {
-  try {
-    const u = new URL(url);
-    if (u.hostname.includes("youtu.be")) return u.pathname.replace(/^\//, "");
-    return u.searchParams.get("v") ?? "";
-  } catch {
-    return "";
-  }
-}
-
 export async function getTranscript(url: string): Promise<TranscriptChunk[]> {
-  const attempts: Array<() => Promise<any>> = [
-    () => supadataFetch(`/transcript?${new URLSearchParams({ url, lang: "en", text: "false", mode: "auto" }).toString()}`),
-    () => supadataFetch(`/transcript?${new URLSearchParams({ url, text: "false", mode: "auto" }).toString()}`),
+  const attempts = [
+    new URLSearchParams({ url, lang: "en", text: "false", mode: "auto" }),
+    new URLSearchParams({ url, lang: "en", text: "false" }),
+    new URLSearchParams({ url, text: "false" }),
   ];
 
-  const id = youtubeId(url);
-  if (id) {
-    attempts.push(() => supadataFetch(`/youtube/transcript?${new URLSearchParams({ videoId: id, lang: "en" }).toString()}`));
-  }
-
   let lastError: unknown = null;
-  for (const attempt of attempts) {
+  for (const params of attempts) {
     try {
-      let data = await attempt();
-      if (data?.jobId && !data?.content) data = await pollJob(`/transcript/${data.jobId}`, 55_000);
-      const normalized = normalizeTranscript(data);
-      if (normalized.length) return normalized;
+      let data = await supadataFetch(`/transcript?${params.toString()}`);
+      if (data.jobId) data = await pollJob(`/transcript/${data.jobId}`, 75_000);
+      const content = Array.isArray(data.content) ? data.content : Array.isArray(data?.data?.content) ? data.data.content : [];
+      if (content.length) {
+        return content.map((c: any) => ({
+          text: String(c.text ?? ""),
+          offset: Number(c.offset ?? c.start ?? 0),
+          duration: Number(c.duration ?? 0),
+          lang: c.lang,
+        }));
+      }
     } catch (error) {
       lastError = error;
     }
   }
-  if (lastError) console.warn("All Supadata transcript strategies failed", lastError);
+  if (lastError) throw lastError;
   return [];
 }
 
@@ -105,47 +86,61 @@ export async function inspectVideo(url: string): Promise<VideoVisualMoment[]> {
             verticalCrop: { type: "number", description: "1-10 suitability for a 9:16 crop with manual keyframes" },
             emotion: { type: "string", description: "crowd eruption, tension, celebration, heartbreak, etc." },
           },
-          required: ["timestamp", "description"],
+          required: ["timestamp", "description", "cameraAngle", "quality", "verticalCrop"],
         },
       },
     },
     required: ["moments"],
   };
 
-  const prompt = "Identify 8-16 useful sports-editing moments with exact source timestamps. Prioritize recognizable plays, setup/stakes, crowd reaction, replay angles, celebrations, atmosphere, entrances, player closeups, and shots that crop well vertically. Return only moments you can actually locate; never invent timestamps.";
-
-  const run = async (withSchema: boolean) => {
-    let job = await supadataFetch(`/extract`, {
-      method: "POST",
-      body: JSON.stringify(withSchema ? { url, prompt, schema } : { url, prompt }),
-    });
-    if (job?.data || job?.moments) return job;
-    if (!job?.jobId) return null;
-    return pollJob(`/extract/${job.jobId}`, 70_000);
+  const request = async (structured: boolean) => {
+    const body: Record<string, unknown> = {
+      url,
+      prompt: "Identify useful sports-editing moments with real timestamps. Prioritize recognizable plays, setup/stakes, crowd reaction, replay angles, celebrations, atmosphere, and shots that crop well vertically. Never invent timestamps.",
+    };
+    if (structured) body.schema = schema;
+    const job = await supadataFetch(`/extract`, { method: "POST", body: JSON.stringify(body) });
+    if (!job.jobId) return [];
+    const result = await pollJob(`/extract/${job.jobId}`, 95_000);
+    const moments = result?.data?.moments ?? result?.moments;
+    return Array.isArray(moments) ? moments as VideoVisualMoment[] : [];
   };
 
-  let result: any = null;
   try {
-    result = await run(true);
+    const structured = await request(true);
+    if (structured.length) return structured;
   } catch (error) {
-    console.warn("Supadata structured extract failed; retrying simple extract", error);
-    try { result = await run(false); } catch (fallbackError) { console.warn("Supadata simple extract failed", fallbackError); }
+    console.warn("Structured Supadata extract failed; retrying simplified extract.", error);
+  }
+  return request(false).catch(() => []);
+}
+
+export function parseManualTranscript(input: string): TranscriptChunk[] {
+  const lines = String(input ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const parsed: { seconds:number; text:string }[] = [];
+  const timestamp = /^(?:\[)?(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?:\])?\s*[-–—:]?\s*(.+)$/;
+
+  for (const line of lines) {
+    const match = line.match(timestamp);
+    if (!match) continue;
+    const hours = Number(match[1] ?? 0);
+    const minutes = Number(match[2] ?? 0);
+    const seconds = Number(match[3] ?? 0);
+    const text = String(match[4] ?? "").trim();
+    if (!text) continue;
+    parsed.push({ seconds: hours * 3600 + minutes * 60 + seconds, text });
   }
 
-  const moments = result?.data?.moments ?? result?.moments ?? result?.data;
-  if (!Array.isArray(moments)) return [];
-  return moments
-    .filter((m: any) => m?.timestamp && m?.description)
-    .map((m: any) => ({
-      timestamp: String(m.timestamp),
-      endTimestamp: m.endTimestamp ? String(m.endTimestamp) : undefined,
-      description: String(m.description),
-      cameraAngle: m.cameraAngle ? String(m.cameraAngle) : "source footage",
-      subjects: Array.isArray(m.subjects) ? m.subjects.map(String) : [],
-      quality: Number(m.quality ?? 7),
-      verticalCrop: Number(m.verticalCrop ?? 7),
-      emotion: m.emotion ? String(m.emotion) : undefined,
-    }));
+  return parsed.map((item, index) => {
+    const next = parsed[index + 1];
+    const durationSeconds = next ? Math.max(1, next.seconds - item.seconds) : 4;
+    return {
+      text: item.text,
+      offset: item.seconds * 1000,
+      duration: durationSeconds * 1000,
+      lang: "en",
+    };
+  });
 }
 
 async function pollJob(path: string, timeoutMs: number) {
@@ -153,7 +148,7 @@ async function pollJob(path: string, timeoutMs: number) {
   while (Date.now() - started < timeoutMs) {
     const data = await supadataFetch(path);
     if (data.status === "completed" || data.data || data.content) return data;
-    if (data.status === "failed") throw new Error(data.error || data.message || "Supadata job failed");
+    if (data.status === "failed") throw new Error(data.error || "Supadata job failed");
     await new Promise((r) => setTimeout(r, 1200));
   }
   throw new Error("Supadata job timed out.");
