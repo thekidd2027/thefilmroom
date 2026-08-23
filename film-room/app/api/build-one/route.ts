@@ -10,6 +10,14 @@ import { requireOwner } from "@/lib/requireOwner";
 
 export const maxDuration = 180;
 
+function storyNeedsTranscript(story: any) {
+  const template = String(story?.template ?? "").toUpperCase();
+  const opening = String(story?.openingConcept ?? story?.opening_concept ?? "").toLowerCase();
+  const summary = String(story?.summary ?? "").toLowerCase();
+  const text = `${opening} ${summary}`;
+  return template === "INTERVIEW_STORY" || /interview|documentary|podcast|quote|soundbite|press conference|player says|coach says/.test(text);
+}
+
 export async function POST(req: NextRequest) {
   try {
     await requireOwner();
@@ -25,7 +33,6 @@ export async function POST(req: NextRequest) {
     if (manualTranscriptText && manualChunks.length < 2) {
       return NextResponse.json({ error:"The manual transcript needs timestamps on separate lines, for example: 00:12 Player says...", needs_manual_transcript:true }, { status:422 });
     }
-    if (!manualChunks.length && !process.env.SUPADATA_API_KEY) return NextResponse.json({ error:"SUPADATA_API_KEY is required unless you provide a timestamped transcript." }, { status:400 });
 
     const db = supabaseAdmin();
     const brain = await getBrandBrain();
@@ -35,8 +42,22 @@ export async function POST(req: NextRequest) {
     if (!pitch) return NextResponse.json({ error:"That pitch no longer exists. Refresh the pitch board and try again." }, { status:404 });
 
     const story = (pitch.score_breakdown?.story ?? {
-      headline:pitch.headline, sport:pitch.sport, summary:pitch.summary ?? "", whyToday:pitch.score_breakdown?.why_today ?? "Selected Film Room pitch.", viewerFeeling:pitch.score_breakdown?.viewer_feeling ?? "interest and nostalgia", searchQueries:[pitch.headline], popularityEvidence:[], trendSources:[], template:pitch.score_breakdown?.template ?? "STORY", fanAllegianceLogic:pitch.score_breakdown?.fan_allegiance_logic ?? "Keep fan allegiance coherent."
-    }) as TrendStory;
+      headline:pitch.headline,
+      sport:pitch.sport,
+      summary:pitch.summary ?? "",
+      whyToday:pitch.score_breakdown?.why_today ?? "Selected Film Room pitch.",
+      viewerFeeling:pitch.score_breakdown?.viewer_feeling ?? "interest and nostalgia",
+      searchQueries:[pitch.headline],
+      popularityEvidence:[],
+      trendSources:[],
+      template:pitch.score_breakdown?.template ?? "STORY",
+      fanAllegianceLogic:pitch.score_breakdown?.fan_allegiance_logic ?? "Keep fan allegiance coherent."
+    }) as TrendStory & Record<string, any>;
+
+    const transcriptRequired = storyNeedsTranscript(story);
+    if (transcriptRequired && !manualChunks.length && !process.env.SUPADATA_API_KEY) {
+      return NextResponse.json({ error:"This story needs dialogue grounding. Add SUPADATA_API_KEY or provide a timestamped transcript." }, { status:400 });
+    }
 
     const { data:recentReels } = await db.from("reels").select("headline").gte("slate_date",new Date(Date.now()-14*86400000).toISOString().slice(0,10));
     const recentHeadlines = (recentReels ?? []).map((x:any)=>x.headline);
@@ -45,12 +66,12 @@ export async function POST(req: NextRequest) {
     const queries = Array.from(new Set([...(story.searchQueries ?? []), ...fallbackQueries].filter(Boolean))).slice(0,4);
     const nested = await Promise.all(queries.map((q:string)=>searchRecentVideos(q,{maxResults:8}).catch((e)=>{ console.warn("YouTube query failed",q,e); return []; })));
     const uniq = [...new Map(nested.flat().map((x:any)=>[x.videoId,x])).values()].slice(0,20) as any[];
-    if (!uniq.length) return NextResponse.json({ error:"I couldn't find usable YouTube results for this pitch. Try another pitch or generate another angle." }, { status:422 });
+    if (uniq.length < 2) return NextResponse.json({ error:"I couldn't find at least two usable YouTube sources for this pitch. Try another pitch or generate another angle." }, { status:422 });
 
     const stats = await getVideoStats(uniq.map((x:any)=>x.videoId));
     const statsMap = new Map(stats.map((x:any)=>[x.videoId,x]));
     const items = uniq.filter((x:any)=>statsMap.has(x.videoId)).map((search:any)=>({search,stats:statsMap.get(search.videoId)!}));
-    if (!items.length) return NextResponse.json({ error:"YouTube found videos, but their metadata could not be read." }, { status:422 });
+    if (items.length < 2) return NextResponse.json({ error:"YouTube found videos, but fewer than two had readable metadata." }, { status:422 });
 
     let qualitative:any[] = [];
     try { qualitative = await scoreVideoCandidates(brain,story,items); } catch (e) { console.warn("Claude source scoring failed; using deterministic scoring.",e); }
@@ -59,7 +80,7 @@ export async function POST(req: NextRequest) {
       const result = scoreCandidate(brain,q,item.stats,item.search.publishedAt,recentHeadlines);
       return {...item,score:result.total,rightsReason:q.rightsReason,blocked:result.blocked};
     }).filter((x:any)=>!x.blocked).sort((a:any,b:any)=>b.score-a.score);
-    if (!ranked.length) return NextResponse.json({ error:"Sources were found, but all of them were rejected by the Film Room sourcing rules." }, { status:422 });
+    if (ranked.length < 2) return NextResponse.json({ error:"Sources were found, but fewer than two passed the Film Room sourcing rules." }, { status:422 });
 
     const inspectionPool = [...ranked].sort((a:any,b:any)=>{
       if (manualVideoId) {
@@ -83,22 +104,24 @@ export async function POST(req: NextRequest) {
       inspected.push({search:src.search,stats:src.stats,transcript:manualChunks,visuals});
     }
 
-    for (const src of inspectionPool) {
-      if (inspected.length >= 2) break;
-      if (inspected.some((x)=>x.search.videoId===src.search.videoId)) continue;
-      let transcript:any[]=[]; let visuals:any[]=[];
-      const url = `https://www.youtube.com/watch?v=${src.search.videoId}`;
-      try { transcript = await getTranscript(url); } catch(e){ console.warn("Transcript failed",src.search.videoId,e); }
-      if (src.stats.durationSeconds > 0 && src.stats.durationSeconds <= 1200) {
-        try { visuals = await inspectVideo(url); } catch(e){ console.warn("Visual inspection failed",src.search.videoId,e); }
+    if (process.env.SUPADATA_API_KEY) {
+      for (const src of inspectionPool) {
+        if (inspected.length >= 3) break;
+        if (inspected.some((x)=>x.search.videoId===src.search.videoId)) continue;
+        let transcript:any[]=[]; let visuals:any[]=[];
+        const url = `https://www.youtube.com/watch?v=${src.search.videoId}`;
+        try { transcript = await getTranscript(url); } catch(e){ console.warn("Transcript failed",src.search.videoId,e); }
+        if (src.stats.durationSeconds > 0 && src.stats.durationSeconds <= 1200) {
+          try { visuals = await inspectVideo(url); } catch(e){ console.warn("Visual inspection failed",src.search.videoId,e); }
+        }
+        if (transcript.length || visuals.length) inspected.push({search:src.search,stats:src.stats,transcript,visuals});
       }
-      if (transcript.length || visuals.length) inspected.push({search:src.search,stats:src.stats,transcript,visuals});
     }
 
-    if (!inspected.length) {
+    if (transcriptRequired && !inspected.some((source)=>source.transcript.length > 0)) {
       const helpSource = inspectionPool[0];
       return NextResponse.json({
-        error:"Film Room found a source, but automatic timestamp grounding failed. Paste a timestamped transcript to continue without losing this pitch.",
+        error:"This story depends on spoken dialogue, but Film Room could not ground a transcript. Paste a timestamped transcript to continue without losing this pitch.",
         needs_manual_transcript:true,
         manual_source: helpSource ? {
           video_id:helpSource.search.videoId,
@@ -109,11 +132,39 @@ export async function POST(req: NextRequest) {
       }, { status:422 });
     }
 
-    const recipe = await buildGroundedRecipe(brain,story,inspected);
-    if (!recipe.primary_clips?.length) return NextResponse.json({ error:"The Brain found sources but couldn't turn them into grounded clips. Try an alternate pitch." }, { status:422 });
+    // Atmosphere/highlight reels do not need dialogue. If automatic inspection is unavailable,
+    // keep the best source videos as editor-locate sources instead of failing the reel.
+    if (!transcriptRequired) {
+      for (const src of inspectionPool) {
+        if (inspected.length >= 3) break;
+        if (inspected.some((x)=>x.search.videoId===src.search.videoId)) continue;
+        inspected.push({ search:src.search, stats:src.stats, transcript:[], visuals:[] });
+      }
+    }
 
-    const sourceRows = ranked.slice(0,4).map((src:any)=>({
-      slate_date:today,candidate_kind:"source",headline:story.headline,sport:story.sport,summary:story.summary,source_urls:[`https://www.youtube.com/watch?v=${src.search.videoId}`],youtube_video_id:src.search.videoId,youtube_channel_id:src.search.channelId,youtube_channel_title:src.search.channelTitle,view_count:src.stats.viewCount,published_at:src.search.publishedAt,score:src.score,score_breakdown:{source_score:src.score,trend_evidence:story.popularityEvidence},selected:false,rejection_reason:null,
+    if (inspected.length < 2) {
+      return NextResponse.json({ error:"Film Room could not assemble at least two source videos for this reel. Try an alternate pitch." }, { status:422 });
+    }
+
+    const recipe = await buildGroundedRecipe(brain,story,inspected);
+    if (!recipe.primary_clips?.length) return NextResponse.json({ error:"The Brain found sources but couldn't turn them into a usable edit plan. Try an alternate pitch." }, { status:422 });
+
+    const sourceRows = ranked.slice(0,Math.max(4,Math.min(6,ranked.length))).map((src:any)=>({
+      slate_date:today,
+      candidate_kind:"source",
+      headline:story.headline,
+      sport:story.sport,
+      summary:story.summary,
+      source_urls:[`https://www.youtube.com/watch?v=${src.search.videoId}`],
+      youtube_video_id:src.search.videoId,
+      youtube_channel_id:src.search.channelId,
+      youtube_channel_title:src.search.channelTitle,
+      view_count:src.stats.viewCount,
+      published_at:src.search.publishedAt,
+      score:src.score,
+      score_breakdown:{source_score:src.score,trend_evidence:story.popularityEvidence,grounding_mode:transcriptRequired?"dialogue":"visual_or_atmosphere"},
+      selected:false,
+      rejection_reason:null,
     }));
     await db.from("candidates").delete().eq("slate_date",today).eq("candidate_kind","source").eq("headline",story.headline);
     const { data:sourceCandidates,error:sourceError } = await db.from("candidates").insert(sourceRows).select();
@@ -122,14 +173,33 @@ export async function POST(req: NextRequest) {
 
     const checklist = buildChecklist(brain,recipe.edit_notes);
     const predictedInterest = Math.min(10,ranked[0].score + Math.min(1.2,(story.popularityEvidence?.length ?? 0)*0.2));
-    const reelRow = { slate_date:today,slot,candidate_id:primaryCandidateId,status:"proposed",headline:story.headline,sport:story.sport,predicted_interest:predictedInterest,script:"",caption:recipe.caption,cover_text:recipe.cover_text,edit_notes:recipe.edit_notes,music_options:recipe.music_options,clip_primary:recipe.primary_clips[0],clip_backups:recipe.replacement_clips,primary_clips:recipe.primary_clips,story_research:recipe.story_research,template_name:recipe.template_name,checklist };
+    const reelRow = {
+      slate_date:today,
+      slot,
+      candidate_id:primaryCandidateId,
+      status:"proposed",
+      headline:story.headline,
+      sport:story.sport,
+      predicted_interest:predictedInterest,
+      script:"",
+      caption:recipe.caption,
+      cover_text:recipe.cover_text,
+      edit_notes:recipe.edit_notes,
+      music_options:recipe.music_options,
+      clip_primary:recipe.primary_clips[0],
+      clip_backups:recipe.replacement_clips,
+      primary_clips:recipe.primary_clips,
+      story_research:{...recipe.story_research,grounding_mode:transcriptRequired?"dialogue":"visual_or_atmosphere",source_video_count:sourceRows.length},
+      template_name:recipe.template_name,
+      checklist
+    };
 
     await db.from("reels").delete().eq("slate_date",today).eq("slot",slot).in("status",["proposed","rejected"]);
     const { data:inserted,error:reelError } = await db.from("reels").insert(reelRow).select().single();
     if (reelError) throw reelError;
     if (primaryCandidateId) await db.from("candidates").update({selected:true}).eq("id",primaryCandidateId);
     await db.from("candidates").update({selected:true}).eq("id",pitch.id);
-    return NextResponse.json({ reel:inserted });
+    return NextResponse.json({ reel:inserted, source_count:sourceRows.length, grounding_mode:transcriptRequired?"dialogue":"visual_or_atmosphere" });
   } catch(err:any) {
     console.error("Build-one failed",err);
     const status = err?.message === "UNAUTHORIZED" ? 401 : err?.message === "FORBIDDEN" ? 403 : 500;
