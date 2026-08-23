@@ -41,6 +41,8 @@ export async function middleware(request: NextRequest) {
   const publicPath =
     path.startsWith("/login") ||
     path.startsWith("/auth/callback") ||
+    path.startsWith("/owner-setup") ||
+    path.startsWith("/api/owner-password-setup") ||
     path.startsWith("/_next") ||
     path === "/favicon.ico";
 
