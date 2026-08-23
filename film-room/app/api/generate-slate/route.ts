@@ -4,219 +4,41 @@ import { supabaseAdmin } from "@/lib/supabaseServer";
 import { requireOwner } from "@/lib/requireOwner";
 
 export const maxDuration = 60;
-
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const PITCH_MODEL = process.env.ANTHROPIC_PITCH_MODEL ?? "claude-haiku-4-5";
 
 type PitchStory = {
-  headline: string;
-  sport: "football" | "basketball";
-  summary: string;
-  whyToday: string;
-  viewerFeeling: string;
-  searchQueries: string[];
-  popularityEvidence: string[];
-  trendSources: { label: string; url: string }[];
-  template: "MOMENT" | "FEELING" | "STORY" | "TAKE";
-  fanAllegianceLogic: string;
-  teams: string[];
-  year: string;
-  players: string[];
-  anticipatedLength: string;
+  headline:string; sport:"football"|"basketball"; summary:string; whyToday:string; viewerFeeling:string;
+  searchQueries:string[]; popularityEvidence:string[]; trendSources:{label:string;url:string}[];
+  template:"INTERVIEW_STORY"|"PLAYER_HIGHLIGHT"|"TEAM_HIGHLIGHT"|"RIVALRY"|"MOMENT"|"STORY";
+  fanAllegianceLogic:string; teams:string[]; year:string; players:string[]; anticipatedLength:string;
+  openingConcept:string; clipPlan:string;
 };
 
-function fallbackPitches(): PitchStory[] {
-  return [
-    {
-      headline: "Johnny Football vs. Alabama — the night A&M announced itself",
-      sport: "football",
-      summary: "Cut the 2012 Texas A&M upset of No. 1 Alabama around Johnny Manziel's chaos, the early lead and the final defensive stand.",
-      whyToday: "A recognizable SEC classic gives the channel a strong nostalgic football post even on a quiet news day.",
-      viewerFeeling: "disbelief, swagger and nostalgia",
-      searchQueries: ["Texas A&M Alabama 2012 Johnny Manziel highlights", "Texas A&M Alabama 2012 final drive broadcast"],
-      popularityEvidence: ["Manziel remains one of the most recognizable college football players of the modern era."],
-      trendSources: [],
-      template: "STORY",
-      fanAllegianceLogic: "Tell it from Texas A&M's underdog point of view while respecting Alabama as the giant being challenged.",
-      teams: ["Texas A&M", "Alabama"],
-      year: "2012",
-      players: ["Johnny Manziel", "Mike Evans", "AJ McCarron"],
-      anticipatedLength: "22–28 sec",
-    },
-    {
-      headline: "Kick Six — one second that broke Alabama",
-      sport: "football",
-      summary: "Build the 2013 Iron Bowl ending from the field-goal attempt through Chris Davis crossing the goal line and Jordan-Hare exploding.",
-      whyToday: "It is one of the easiest college football moments for casual fans to recognize instantly.",
-      viewerFeeling: "shock and pure chaos",
-      searchQueries: ["Auburn Alabama Kick Six 2013 broadcast", "Chris Davis Kick Six crowd reaction"],
-      popularityEvidence: ["The Kick Six is consistently treated as one of the defining plays in college football history."],
-      trendSources: [],
-      template: "MOMENT",
-      fanAllegianceLogic: "Stay completely inside Auburn's point of view; Alabama is the opponent, not a co-hero.",
-      teams: ["Auburn", "Alabama"],
-      year: "2013",
-      players: ["Chris Davis", "Nick Marshall", "AJ McCarron"],
-      anticipatedLength: "18–24 sec",
-    },
-    {
-      headline: "Vince Young on 4th-and-5 — the Rose Bowl ending",
-      sport: "football",
-      summary: "Start with the stakes, then let Vince Young's final touchdown run and the crowd reaction carry the reel.",
-      whyToday: "The 2006 Rose Bowl still feels cinematic and works perfectly as a short story with a single payoff.",
-      viewerFeeling: "inevitability and awe",
-      searchQueries: ["Vince Young 4th and 5 Rose Bowl 2006 broadcast", "Texas USC Rose Bowl final drive"],
-      popularityEvidence: ["Vince Young's winning run is among the most iconic championship moments in the sport."],
-      trendSources: [],
-      template: "MOMENT",
-      fanAllegianceLogic: "Center Texas and Vince Young; USC provides the championship stakes.",
-      teams: ["Texas", "USC"],
-      year: "2006",
-      players: ["Vince Young", "Reggie Bush", "Matt Leinart"],
-      anticipatedLength: "20–27 sec",
-    },
-    {
-      headline: "The shot that ended Kentucky's perfect season",
-      sport: "basketball",
-      summary: "Use Wisconsin's 2015 Final Four upset as a compressed story: undefeated Kentucky, late-game tension, then Wisconsin closing the door.",
-      whyToday: "It is a recognizable March Madness story that gives the feed basketball variety outside tournament season.",
-      viewerFeeling: "tension and upset nostalgia",
-      searchQueries: ["Wisconsin Kentucky 2015 Final Four highlights", "Wisconsin ends Kentucky undefeated season 2015"],
-      popularityEvidence: ["Kentucky entered 38-0, giving the game instant historical stakes."],
-      trendSources: [],
-      template: "STORY",
-      fanAllegianceLogic: "Tell it through Wisconsin's upset perspective; Kentucky is the unbeaten giant.",
-      teams: ["Wisconsin", "Kentucky"],
-      year: "2015",
-      players: ["Frank Kaminsky", "Sam Dekker", "Karl-Anthony Towns", "Devin Booker"],
-      anticipatedLength: "24–30 sec",
-    },
-    {
-      headline: "Boise State's Statue of Liberty — the perfect ending",
-      sport: "football",
-      summary: "Cut the 2007 Fiesta Bowl finish around the hook-and-lateral, overtime touchdown and Statue of Liberty two-point conversion.",
-      whyToday: "It is a complete underdog movie in less than 30 seconds and fits Film Room's historic-but-alive identity.",
-      viewerFeeling: "joy, surprise and underdog nostalgia",
-      searchQueries: ["Boise State Oklahoma 2007 Fiesta Bowl Statue of Liberty", "Boise State Fiesta Bowl trick plays broadcast"],
-      popularityEvidence: ["The ending is one of the most famous trick-play sequences in college football history."],
-      trendSources: [],
-      template: "STORY",
-      fanAllegianceLogic: "Stay with Boise State's underdog perspective from setup through celebration.",
-      teams: ["Boise State", "Oklahoma"],
-      year: "2007",
-      players: ["Jared Zabransky", "Ian Johnson", "Adrian Peterson"],
-      anticipatedLength: "25–30 sec",
-    },
-  ];
+function fallbackPitches():PitchStory[]{ return [
+ {headline:"Johnny Manziel explains the chaos — then show it",sport:"football",summary:"Open on a strong Johnny Manziel interview or documentary soundbite about his college mindset, then smash into the Alabama upset, escapes and Mike Evans connections.",whyToday:"A personality-led opening makes familiar highlights feel like a story instead of another montage.",viewerFeeling:"swagger and nostalgia",searchQueries:["Johnny Manziel interview Texas A&M documentary college football","Johnny Manziel Alabama 2012 highlights"],popularityEvidence:["Manziel remains one of the most recognizable college football personalities."],trendSources:[],template:"INTERVIEW_STORY",fanAllegianceLogic:"Stay in Manziel and Texas A&M's point of view.",teams:["Texas A&M","Alabama"],year:"2012",players:["Johnny Manziel","Mike Evans","AJ McCarron"],anticipatedLength:"24–32 sec",openingConcept:"4–7 sec interview quote from Manziel about pressure, confidence or the Alabama game.",clipPlan:"Interview cold open → beat/drop transition → 3–5 Manziel highlights → crowd/final reaction."},
+ {headline:"Cam Newton was inevitable at Auburn",sport:"football",summary:"A player-highlight reel centered on Cam Newton's 2010 season: power runs, impossible escapes, celebrations and championship imagery.",whyToday:"One-player identity reels are easy to understand and highly rewatchable.",viewerFeeling:"awe",searchQueries:["Cam Newton Auburn 2010 highlights","Cam Newton Auburn documentary interview"],popularityEvidence:["Newton's 2010 season is an instantly recognizable college football peak."],trendSources:[],template:"PLAYER_HIGHLIGHT",fanAllegianceLogic:"Auburn/Cam hero perspective.",teams:["Auburn"],year:"2010",players:["Cam Newton"],anticipatedLength:"18–24 sec",openingConcept:"Open on a close-up, tunnel shot or one-line quote before the music hits.",clipPlan:"Identity shot → 5–7 escalating highlights → championship/celebration payoff."},
+ {headline:"Death Valley at night feels like another sport",sport:"football",summary:"Make LSU itself the subject: entrance, band, crowd, stadium lights and explosive home highlights.",whyToday:"School-culture reels broaden the channel beyond individual games and stars.",viewerFeeling:"belonging and atmosphere",searchQueries:["LSU Death Valley night game cinematic","LSU Tiger Stadium best highlights crowd"],popularityEvidence:["Tiger Stadium atmosphere is recognizable even without a specific matchup."],trendSources:[],template:"TEAM_HIGHLIGHT",fanAllegianceLogic:"Every shot should reinforce LSU as the hero.",teams:["LSU"],year:"Multiple seasons",players:["Joe Burrow","Jayden Daniels"],anticipatedLength:"20–27 sec",openingConcept:"Quiet stadium/tunnel audio before the crowd erupts.",clipPlan:"Atmosphere cold open → entrance → star highlights → student section/crowd finish."},
+ {headline:"Kick Six — rivalry hatred in one play",sport:"football",summary:"Build the Iron Bowl stakes quickly, then let the missed field goal, Chris Davis return and Jordan-Hare eruption carry the edit.",whyToday:"Rivalry stories have built-in context and emotion.",viewerFeeling:"shock and chaos",searchQueries:["Auburn Alabama Kick Six 2013 broadcast","Iron Bowl rivalry documentary Kick Six"],popularityEvidence:["The Kick Six is one of college football's defining rivalry plays."],trendSources:[],template:"RIVALRY",fanAllegianceLogic:"Auburn is the emotional point of view; Alabama supplies the stakes.",teams:["Auburn","Alabama"],year:"2013",players:["Chris Davis","Nick Marshall","AJ McCarron"],anticipatedLength:"20–26 sec",openingConcept:"One sentence of rivalry context or a broadcaster setup before the kick.",clipPlan:"Rivalry setup → field goal attempt → full return → crowd/broadcast-call payoff."},
+ {headline:"Caitlin Clark from logo range",sport:"basketball",summary:"A clean player reel built around Clark's deepest threes, swagger and Iowa crowd reactions.",whyToday:"Basketball player reels keep the feed varied and can be built around a single instantly legible skill.",viewerFeeling:"disbelief and admiration",searchQueries:["Caitlin Clark Iowa logo threes highlights","Caitlin Clark Iowa interview confidence"],popularityEvidence:["Clark is one of the most recognizable recent college basketball players."],trendSources:[],template:"PLAYER_HIGHLIGHT",fanAllegianceLogic:"Iowa/Clark hero perspective.",teams:["Iowa"],year:"2023–24",players:["Caitlin Clark"],anticipatedLength:"16–22 sec",openingConcept:"Open on a quote, stare-down or commentator setup about her range.",clipPlan:"Setup → progressively deeper threes → celebration/crowd payoff."}
+]; }
+
+function normalizeStory(s:any):PitchStory{return {headline:String(s.headline),sport:s.sport==="basketball"?"basketball":"football",summary:String(s.summary??""),whyToday:String(s.whyToday??"Seasonally relevant Film Room idea."),viewerFeeling:String(s.viewerFeeling??"nostalgia or excitement"),searchQueries:Array.isArray(s.searchQueries)&&s.searchQueries.length?s.searchQueries.slice(0,4).map(String):[String(s.headline)],popularityEvidence:Array.isArray(s.popularityEvidence)?s.popularityEvidence.map(String):[],trendSources:[],template:["INTERVIEW_STORY","PLAYER_HIGHLIGHT","TEAM_HIGHLIGHT","RIVALRY","MOMENT","STORY"].includes(s.template)?s.template:"STORY",fanAllegianceLogic:String(s.fanAllegianceLogic??"Keep one emotional point of view."),teams:Array.isArray(s.teams)?s.teams.slice(0,4).map(String):[],year:String(s.year??"—"),players:Array.isArray(s.players)?s.players.slice(0,6).map(String):[],anticipatedLength:String(s.anticipatedLength??"20–30 sec"),openingConcept:String(s.openingConcept??"Open with the strongest piece of context before the highlights."),clipPlan:String(s.clipPlan??"Hook → escalating highlights → payoff.")};}
+function extractJson(text:string){const cleaned=text.trim().replace(/^```json\s*/i,"").replace(/^```\s*/i,"").replace(/```$/i,"").trim();try{return JSON.parse(cleaned);}catch{const start=cleaned.indexOf("{");const end=cleaned.lastIndexOf("}");if(start>=0&&end>start)return JSON.parse(cleaned.slice(start,end+1));throw new Error("Unreadable pitch response");}}
+
+async function generatePitchIdeas(dateIso:string,brain:any):Promise<PitchStory[]>{
+ const apiKey=process.env.ANTHROPIC_API_KEY;if(!apiKey)return fallbackPitches();
+ const prompt=`You are the editorial intelligence desk for Film Room, a cinematic college football and college basketball short-form brand. Today is ${dateIso}. Film Room's thesis: make today's college sports feel historic and historic college sports feel alive again. Voice: ${(brain?.voice?.principles??[]).join(" ")}.
+Create exactly 5 SPECIFIC reel pitches. Think like a producer, not a headline bot. The five should have useful FORMAT VARIETY. Strong formats include:
+1) INTERVIEW_STORY: identify a real player/coach personality whose documentary, podcast, fan interview, press interview or sports interview could contain a compelling 3–8 second quote. The quote is the cold open, then highlights visually prove or deepen what they said. Do NOT invent a quote or claim a specific interview exists unless known; instead provide search queries to locate a usable interview.
+2) PLAYER_HIGHLIGHT: one QB, basketball player or other star; a specific skill, season, game or identity.
+3) TEAM_HIGHLIGHT: a school's atmosphere, season, identity, entrance, crowd, style or iconic run.
+4) RIVALRY: one rivalry or matchup with conflict and recognizable stakes.
+5) MOMENT/STORY: one cinematic historic or current moment with a beginning and payoff.
+Do not force one of each if a stronger mix exists, but avoid five versions of the same format. Use real teams, real years/seasons and recognizable players. Quiet news days are fine: use evergreen history, interviews, documentary material, school culture and legendary players. Favor ideas whose source material is likely searchable on YouTube. Do not invent breaking news, interviews, quotes or facts. Anticipated length should usually be 15–35 seconds. For each pitch explain the opening concept and clip sequence so the user can instantly picture the edit.
+Return ONLY valid JSON: {"stories":[{"headline":"...","sport":"football|basketball","summary":"...","whyToday":"...","viewerFeeling":"...","searchQueries":["..."],"popularityEvidence":["..."],"trendSources":[],"template":"INTERVIEW_STORY|PLAYER_HIGHLIGHT|TEAM_HIGHLIGHT|RIVALRY|MOMENT|STORY","fanAllegianceLogic":"...","teams":["..."],"year":"...","players":["..."],"anticipatedLength":"...","openingConcept":"...","clipPlan":"..."}]}`;
+ const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),14000);
+ try{const response=await fetch(ANTHROPIC_API_URL,{method:"POST",headers:{"content-type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:PITCH_MODEL,max_tokens:2300,temperature:.8,messages:[{role:"user",content:prompt}]}),signal:controller.signal});const payload=await response.json();if(!response.ok)throw new Error(payload?.error?.message??`Anthropic request failed (${response.status})`);const text=(payload?.content??[]).filter((b:any)=>b?.type==="text").map((b:any)=>b.text).join("\n");const parsed=extractJson(text);const normalized=(Array.isArray(parsed?.stories)?parsed.stories:[]).filter((s:any)=>s?.headline&&(s.sport==="football"||s.sport==="basketball")).slice(0,5).map(normalizeStory);return normalized.length===5?normalized:fallbackPitches();}catch(error){console.warn("Pitch AI unavailable; using fallback.",error);return fallbackPitches();}finally{clearTimeout(timer);}
 }
 
-function normalizeStory(s: any): PitchStory {
-  return {
-    headline: String(s.headline),
-    sport: s.sport === "basketball" ? "basketball" : "football",
-    summary: String(s.summary ?? ""),
-    whyToday: String(s.whyToday ?? "Seasonally relevant Film Room idea."),
-    viewerFeeling: String(s.viewerFeeling ?? "nostalgia, anticipation, or connection"),
-    searchQueries: Array.isArray(s.searchQueries) && s.searchQueries.length ? s.searchQueries.slice(0, 3).map(String) : [String(s.headline)],
-    popularityEvidence: Array.isArray(s.popularityEvidence) ? s.popularityEvidence.map(String) : [],
-    trendSources: [],
-    template: ["MOMENT", "FEELING", "STORY", "TAKE"].includes(s.template) ? s.template : "STORY",
-    fanAllegianceLogic: String(s.fanAllegianceLogic ?? "Keep one emotional point of view unless rivalry conflict is the story."),
-    teams: Array.isArray(s.teams) ? s.teams.slice(0, 4).map(String) : [],
-    year: String(s.year ?? "—"),
-    players: Array.isArray(s.players) ? s.players.slice(0, 5).map(String) : [],
-    anticipatedLength: String(s.anticipatedLength ?? "20–30 sec"),
-  };
-}
-
-function extractJson(text: string) {
-  const cleaned = text.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
-  try { return JSON.parse(cleaned); } catch {
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start >= 0 && end > start) return JSON.parse(cleaned.slice(start, end + 1));
-    throw new Error("Unreadable pitch response");
-  }
-}
-
-async function generatePitchIdeas(dateIso: string, brain: any): Promise<PitchStory[]> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return fallbackPitches();
-
-  const prompt = `You are the editorial pitch desk for Film Room, a college football and college basketball short-form media brand. Today is ${dateIso}.
-Film Room's thesis: make today's college sports feel historic and historic college sports feel alive again.
-Voice principles: ${(brain?.voice?.principles ?? []).join(" ")}
-Create exactly 5 specific reel ideas. Do not give vague concepts like "best entrances" unless you anchor each pitch to a specific real game, team, player, rivalry or moment. Do not invent breaking news.
-Mix football and basketball when possible. Favor famous, easy-to-source moments that work as 15-30 second edits without voiceover.
-For every pitch include the actual teams, year/season, recognizable players involved, and your anticipated final reel length.
-Return ONLY valid JSON: {"stories":[{"headline":"...","sport":"football|basketball","summary":"...","whyToday":"...","viewerFeeling":"...","searchQueries":["...","..."],"popularityEvidence":["..."],"trendSources":[],"template":"MOMENT|FEELING|STORY|TAKE","fanAllegianceLogic":"...","teams":["Team A","Team B"],"year":"2013","players":["Player One","Player Two"],"anticipatedLength":"22–28 sec"}]}`;
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12000);
-  try {
-    const response = await fetch(ANTHROPIC_API_URL, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: PITCH_MODEL, max_tokens: 1800, temperature: 0.75, messages: [{ role: "user", content: prompt }] }),
-      signal: controller.signal,
-    });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload?.error?.message ?? `Anthropic request failed (${response.status})`);
-    const text = (payload?.content ?? []).filter((b: any) => b?.type === "text").map((b: any) => b.text).join("\n");
-    const parsed = extractJson(text);
-    const normalized = (Array.isArray(parsed?.stories) ? parsed.stories : [])
-      .filter((s: any) => s?.headline && (s.sport === "football" || s.sport === "basketball"))
-      .slice(0, 5)
-      .map(normalizeStory);
-    return normalized.length === 5 ? normalized : fallbackPitches();
-  } catch (error) {
-    console.warn("Pitch AI unavailable; using reliable editorial fallback.", error);
-    return fallbackPitches();
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-export async function POST() {
-  try {
-    await requireOwner();
-    const brain = await getBrandBrain();
-    const db = supabaseAdmin();
-    const today = new Date().toISOString().slice(0, 10);
-    const stories = await generatePitchIdeas(today, brain);
-
-    const pitchRows = stories.map((story, index) => ({
-      slate_date: today,
-      candidate_kind: "pitch",
-      headline: story.headline,
-      sport: story.sport,
-      summary: story.summary,
-      source_urls: [],
-      score: Math.max(7.2, 9.6 - index * 0.35),
-      score_breakdown: {
-        story,
-        kind: "pitch",
-        why_today: story.whyToday,
-        viewer_feeling: story.viewerFeeling,
-        template: story.template,
-        fan_allegiance_logic: story.fanAllegianceLogic,
-        teams: story.teams,
-        year: story.year,
-        players: story.players,
-        anticipated_length: story.anticipatedLength,
-      },
-      selected: false,
-      rejection_reason: null,
-    }));
-
-    const { error: deleteError } = await db.from("candidates").delete().eq("slate_date", today).eq("candidate_kind", "pitch");
-    if (deleteError) throw deleteError;
-    const { data, error } = await db.from("candidates").insert(pitchRows).select();
-    if (error) throw error;
-    return NextResponse.json({ pitches: data ?? [], count: data?.length ?? 0 });
-  } catch (err: any) {
-    console.error("Pitch generation failed:", err);
-    const status = err?.message === "UNAUTHORIZED" ? 401 : err?.message === "FORBIDDEN" ? 403 : 500;
-    return NextResponse.json({ error: status === 401 ? "Please sign in again." : status === 403 ? "Owner access required." : err?.message ?? "Pitch generation failed" }, { status });
-  }
-}
+export async function POST(){try{await requireOwner();const brain=await getBrandBrain();const db=supabaseAdmin();const today=new Date().toISOString().slice(0,10);const stories=await generatePitchIdeas(today,brain);const pitchRows=stories.map((story,index)=>({slate_date:today,candidate_kind:"pitch",headline:story.headline,sport:story.sport,summary:story.summary,source_urls:[],score:Math.max(7.2,9.6-index*.35),score_breakdown:{story,kind:"pitch",why_today:story.whyToday,viewer_feeling:story.viewerFeeling,template:story.template,fan_allegiance_logic:story.fanAllegianceLogic,teams:story.teams,year:story.year,players:story.players,anticipated_length:story.anticipatedLength,opening_concept:story.openingConcept,clip_plan:story.clipPlan},selected:false,rejection_reason:null}));const{error:deleteError}=await db.from("candidates").delete().eq("slate_date",today).eq("candidate_kind","pitch");if(deleteError)throw deleteError;const{data,error}=await db.from("candidates").insert(pitchRows).select();if(error)throw error;return NextResponse.json({pitches:data??[],count:data?.length??0});}catch(err:any){console.error("Pitch generation failed:",err);const status=err?.message==="UNAUTHORIZED"?401:err?.message==="FORBIDDEN"?403:500;return NextResponse.json({error:status===401?"Please sign in again.":status===403?"Owner access required.":err?.message??"Pitch generation failed"},{status});}}
