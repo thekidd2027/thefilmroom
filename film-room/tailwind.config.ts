@@ -5,24 +5,31 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // "Film Room" palette: dark editing-bay charcoal, tungsten amber
-        // tally-light accent, cool slate for secondary UI. Avoids the
-        // generic cream/terracotta AI-default palette on purpose.
-        ink: "#0E0F0D",       // near-black, slightly warm (raw stock)
-        bay: "#17181A",       // panel background
-        bay2: "#1F2123",      // raised panel
-        rule: "#2B2D30",      // hairline dividers
-        paper: "#EDEAE2",     // primary text, warm white (light table)
-        dim: "#9A9C97",       // secondary text
-        tally: "#E2A33B",     // amber tally-light accent (record indicator)
-        wire: "#5B8C8A",      // cool teal, secondary accent (slate/scope line)
-        signal: "#C0432F",    // rejection / live-record red
-        go: "#6E9B5C",        // approval green, desaturated
+        // Film Room editorial palette
+        // Jelly Bean #25799B · Sinbad #A2C5D8 · Sidecar #F7E6CB · Milan Red #CB1B03
+        ink: "#17313A",       // deep blue-charcoal text
+        bay: "#FFFDF8",       // warm paper panel
+        bay2: "#F7E6CB",      // Sidecar cream
+        rule: "#D9D1C4",      // soft editorial divider
+        paper: "#17313A",     // primary text
+        dim: "#6F7D7E",       // muted secondary text
+        tally: "#25799B",     // Jelly Bean primary accent
+        wire: "#A2C5D8",      // Sinbad secondary accent
+        signal: "#CB1B03",    // Milan Red signal/accent
+        go: "#4D8064",        // calm approval green
+        sidecar: "#F7E6CB",
+        jelly: "#25799B",
+        sinbad: "#A2C5D8",
+        milan: "#CB1B03",
       },
       fontFamily: {
         display: ["var(--font-display)"],
         body: ["var(--font-body)"],
         mono: ["var(--font-mono)"],
+      },
+      boxShadow: {
+        editorial: "0 18px 45px rgba(37, 121, 155, 0.10)",
+        lift: "0 12px 28px rgba(23, 49, 58, 0.12)",
       },
     },
   },
