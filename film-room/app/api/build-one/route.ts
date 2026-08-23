@@ -5,7 +5,7 @@ import { scoreVideoCandidates, buildGroundedRecipe, TrendStory, SourceInspection
 import { scoreCandidate } from "@/lib/scoring";
 import { buildChecklist } from "@/lib/checklist";
 import { supabaseAdmin } from "@/lib/supabaseServer";
-import { getTranscript, inspectVideo } from "@/lib/supadata";
+import { getTranscript, inspectVideo, parseManualTranscript } from "@/lib/supadata";
 import { requireOwner } from "@/lib/requireOwner";
 
 export const maxDuration = 180;
@@ -13,13 +13,19 @@ export const maxDuration = 180;
 export async function POST(req: NextRequest) {
   try {
     await requireOwner();
-    if (!process.env.SUPADATA_API_KEY) return NextResponse.json({ error:"SUPADATA_API_KEY is required." }, { status:400 });
     if (!process.env.YOUTUBE_API_KEY) return NextResponse.json({ error:"YOUTUBE_API_KEY is required." }, { status:400 });
 
     const body = await req.json().catch(() => ({}));
     const id = String(body.id ?? "");
     const slot = Math.min(3, Math.max(1, Number(body.slot ?? 1)));
+    const manualTranscriptText = String(body.manualTranscript ?? "").trim();
+    const manualVideoId = String(body.manualVideoId ?? "").trim();
+    const manualChunks = manualTranscriptText ? parseManualTranscript(manualTranscriptText) : [];
     if (!id) return NextResponse.json({ error:"Pitch id is required." }, { status:400 });
+    if (manualTranscriptText && manualChunks.length < 2) {
+      return NextResponse.json({ error:"The manual transcript needs timestamps on separate lines, for example: 00:12 Player says...", needs_manual_transcript:true }, { status:422 });
+    }
+    if (!manualChunks.length && !process.env.SUPADATA_API_KEY) return NextResponse.json({ error:"SUPADATA_API_KEY is required unless you provide a timestamped transcript." }, { status:400 });
 
     const db = supabaseAdmin();
     const brain = await getBrandBrain();
@@ -35,12 +41,7 @@ export async function POST(req: NextRequest) {
     const { data:recentReels } = await db.from("reels").select("headline").gte("slate_date",new Date(Date.now()-14*86400000).toISOString().slice(0,10));
     const recentHeadlines = (recentReels ?? []).map((x:any)=>x.headline);
 
-    // Search several angles because interview/story pitches often need different source wording than highlight pitches.
-    const fallbackQueries = [
-      story.headline,
-      `${story.headline} highlights`,
-      `${story.headline} interview documentary`,
-    ];
+    const fallbackQueries = [story.headline, `${story.headline} highlights`, `${story.headline} interview documentary`];
     const queries = Array.from(new Set([...(story.searchQueries ?? []), ...fallbackQueries].filter(Boolean))).slice(0,4);
     const nested = await Promise.all(queries.map((q:string)=>searchRecentVideos(q,{maxResults:8}).catch((e)=>{ console.warn("YouTube query failed",q,e); return []; })));
     const uniq = [...new Map(nested.flat().map((x:any)=>[x.videoId,x])).values()].slice(0,20) as any[];
@@ -60,16 +61,31 @@ export async function POST(req: NextRequest) {
     }).filter((x:any)=>!x.blocked).sort((a:any,b:any)=>b.score-a.score);
     if (!ranked.length) return NextResponse.json({ error:"Sources were found, but all of them were rejected by the Film Room sourcing rules." }, { status:422 });
 
-    // Prefer videos short enough for reliable inspection, but keep longer sources as fallbacks.
     const inspectionPool = [...ranked].sort((a:any,b:any)=>{
+      if (manualVideoId) {
+        if (a.search.videoId === manualVideoId) return -1;
+        if (b.search.videoId === manualVideoId) return 1;
+      }
       const aGood = a.stats.durationSeconds > 0 && a.stats.durationSeconds <= 1200 ? 1 : 0;
       const bGood = b.stats.durationSeconds > 0 && b.stats.durationSeconds <= 1200 ? 1 : 0;
       return bGood - aGood || b.score - a.score;
     }).slice(0,6);
 
     const inspected:SourceInspection[] = [];
+    if (manualChunks.length) {
+      const src = inspectionPool.find((x:any)=>x.search.videoId===manualVideoId) ?? inspectionPool[0];
+      if (!src) return NextResponse.json({ error:"I couldn't match the manual transcript to a source video." }, { status:422 });
+      const url = `https://www.youtube.com/watch?v=${src.search.videoId}`;
+      let visuals:any[]=[];
+      if (process.env.SUPADATA_API_KEY && src.stats.durationSeconds > 0 && src.stats.durationSeconds <= 1200) {
+        try { visuals = await inspectVideo(url); } catch(e){ console.warn("Manual transcript visual inspection failed",src.search.videoId,e); }
+      }
+      inspected.push({search:src.search,stats:src.stats,transcript:manualChunks,visuals});
+    }
+
     for (const src of inspectionPool) {
       if (inspected.length >= 2) break;
+      if (inspected.some((x)=>x.search.videoId===src.search.videoId)) continue;
       let transcript:any[]=[]; let visuals:any[]=[];
       const url = `https://www.youtube.com/watch?v=${src.search.videoId}`;
       try { transcript = await getTranscript(url); } catch(e){ console.warn("Transcript failed",src.search.videoId,e); }
@@ -78,7 +94,20 @@ export async function POST(req: NextRequest) {
       }
       if (transcript.length || visuals.length) inspected.push({search:src.search,stats:src.stats,transcript,visuals});
     }
-    if (!inspected.length) return NextResponse.json({ error:"I found source videos, but Supadata couldn't read timestamps or visuals from them. Try this pitch again once, or swap in an alternate." }, { status:422 });
+
+    if (!inspected.length) {
+      const helpSource = inspectionPool[0];
+      return NextResponse.json({
+        error:"Film Room found a source, but automatic timestamp grounding failed. Paste a timestamped transcript to continue without losing this pitch.",
+        needs_manual_transcript:true,
+        manual_source: helpSource ? {
+          video_id:helpSource.search.videoId,
+          title:helpSource.search.title,
+          channel_title:helpSource.search.channelTitle,
+          url:`https://www.youtube.com/watch?v=${helpSource.search.videoId}`,
+        } : null,
+      }, { status:422 });
+    }
 
     const recipe = await buildGroundedRecipe(brain,story,inspected);
     if (!recipe.primary_clips?.length) return NextResponse.json({ error:"The Brain found sources but couldn't turn them into grounded clips. Try an alternate pitch." }, { status:422 });
