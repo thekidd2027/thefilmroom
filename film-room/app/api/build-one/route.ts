@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     const today = new Date().toISOString().slice(0,10);
     const { data:pitch, error:pitchError } = await db.from("candidates").select("*").eq("id",id).eq("candidate_kind","pitch").maybeSingle();
     if (pitchError) throw pitchError;
-    if (!pitch) return NextResponse.json({ error:"That pitch no longer exists." }, { status:404 });
+    if (!pitch) return NextResponse.json({ error:"That pitch no longer exists. Refresh the pitch board and try again." }, { status:404 });
 
     const story = (pitch.score_breakdown?.story ?? {
       headline:pitch.headline, sport:pitch.sport, summary:pitch.summary ?? "", whyToday:pitch.score_breakdown?.why_today ?? "Selected Film Room pitch.", viewerFeeling:pitch.score_breakdown?.viewer_feeling ?? "interest and nostalgia", searchQueries:[pitch.headline], popularityEvidence:[], trendSources:[], template:pitch.score_breakdown?.template ?? "STORY", fanAllegianceLogic:pitch.score_breakdown?.fan_allegiance_logic ?? "Keep fan allegiance coherent."
@@ -34,42 +34,56 @@ export async function POST(req: NextRequest) {
 
     const { data:recentReels } = await db.from("reels").select("headline").gte("slate_date",new Date(Date.now()-14*86400000).toISOString().slice(0,10));
     const recentHeadlines = (recentReels ?? []).map((x:any)=>x.headline);
-    const queries = (story.searchQueries?.length ? story.searchQueries : [story.headline]).slice(0,2);
-    const nested = await Promise.all(queries.map(q=>searchRecentVideos(q,{maxResults:5})));
-    const uniq = [...new Map(nested.flat().map(x=>[x.videoId,x])).values()].slice(0,8);
-    if (!uniq.length) return NextResponse.json({ error:"No YouTube sources found for this pitch. Pick another pitch." }, { status:422 });
 
-    const stats = await getVideoStats(uniq.map(x=>x.videoId));
-    const statsMap = new Map(stats.map(x=>[x.videoId,x]));
-    const items = uniq.filter(x=>statsMap.has(x.videoId)).map(search=>({search,stats:statsMap.get(search.videoId)!}));
-    if (!items.length) return NextResponse.json({ error:"Source videos were found but their metadata was unavailable." }, { status:422 });
+    // Search several angles because interview/story pitches often need different source wording than highlight pitches.
+    const fallbackQueries = [
+      story.headline,
+      `${story.headline} highlights`,
+      `${story.headline} interview documentary`,
+    ];
+    const queries = Array.from(new Set([...(story.searchQueries ?? []), ...fallbackQueries].filter(Boolean))).slice(0,4);
+    const nested = await Promise.all(queries.map((q:string)=>searchRecentVideos(q,{maxResults:8}).catch((e)=>{ console.warn("YouTube query failed",q,e); return []; })));
+    const uniq = [...new Map(nested.flat().map((x:any)=>[x.videoId,x])).values()].slice(0,20) as any[];
+    if (!uniq.length) return NextResponse.json({ error:"I couldn't find usable YouTube results for this pitch. Try another pitch or generate another angle." }, { status:422 });
+
+    const stats = await getVideoStats(uniq.map((x:any)=>x.videoId));
+    const statsMap = new Map(stats.map((x:any)=>[x.videoId,x]));
+    const items = uniq.filter((x:any)=>statsMap.has(x.videoId)).map((search:any)=>({search,stats:statsMap.get(search.videoId)!}));
+    if (!items.length) return NextResponse.json({ error:"YouTube found videos, but their metadata could not be read." }, { status:422 });
 
     let qualitative:any[] = [];
     try { qualitative = await scoreVideoCandidates(brain,story,items); } catch (e) { console.warn("Claude source scoring failed; using deterministic scoring.",e); }
-    const ranked = items.map((item,i)=>{
+    const ranked = items.map((item:any,i:number)=>{
       const q = qualitative[i] ?? { headline:story.headline,sport:story.sport,summary:story.summary,wowFactor:7,storyValue:8,brandFit:8,verticalViability:7,rightsRisk:"caution" as const,rightsReason:"Public source footage; verify platform reuse rights." };
       const result = scoreCandidate(brain,q,item.stats,item.search.publishedAt,recentHeadlines);
       return {...item,score:result.total,rightsReason:q.rightsReason,blocked:result.blocked};
-    }).filter(x=>!x.blocked).sort((a,b)=>b.score-a.score);
-    if (!ranked.length) return NextResponse.json({ error:"All discovered sources were blocked by sourcing rules." }, { status:422 });
+    }).filter((x:any)=>!x.blocked).sort((a:any,b:any)=>b.score-a.score);
+    if (!ranked.length) return NextResponse.json({ error:"Sources were found, but all of them were rejected by the Film Room sourcing rules." }, { status:422 });
 
-    // Spend Supadata credits only on the strongest two sources first.
+    // Prefer videos short enough for reliable inspection, but keep longer sources as fallbacks.
+    const inspectionPool = [...ranked].sort((a:any,b:any)=>{
+      const aGood = a.stats.durationSeconds > 0 && a.stats.durationSeconds <= 1200 ? 1 : 0;
+      const bGood = b.stats.durationSeconds > 0 && b.stats.durationSeconds <= 1200 ? 1 : 0;
+      return bGood - aGood || b.score - a.score;
+    }).slice(0,6);
+
     const inspected:SourceInspection[] = [];
-    for (const src of ranked.slice(0,2)) {
+    for (const src of inspectionPool) {
+      if (inspected.length >= 2) break;
       let transcript:any[]=[]; let visuals:any[]=[];
-      try { transcript = await getTranscript(`https://www.youtube.com/watch?v=${src.search.videoId}`); } catch(e){ console.warn("Transcript failed",src.search.videoId,e); }
+      const url = `https://www.youtube.com/watch?v=${src.search.videoId}`;
+      try { transcript = await getTranscript(url); } catch(e){ console.warn("Transcript failed",src.search.videoId,e); }
       if (src.stats.durationSeconds > 0 && src.stats.durationSeconds <= 1200) {
-        try { visuals = await inspectVideo(`https://www.youtube.com/watch?v=${src.search.videoId}`); } catch(e){ console.warn("Visual inspection failed",src.search.videoId,e); }
+        try { visuals = await inspectVideo(url); } catch(e){ console.warn("Visual inspection failed",src.search.videoId,e); }
       }
       if (transcript.length || visuals.length) inspected.push({search:src.search,stats:src.stats,transcript,visuals});
     }
-    if (!inspected.length) return NextResponse.json({ error:"Could not ground timestamps from the best sources. Pick another pitch or try again later." }, { status:422 });
+    if (!inspected.length) return NextResponse.json({ error:"I found source videos, but Supadata couldn't read timestamps or visuals from them. Try this pitch again once, or swap in an alternate." }, { status:422 });
 
     const recipe = await buildGroundedRecipe(brain,story,inspected);
-    if (!recipe.primary_clips?.length) return NextResponse.json({ error:"The Brain could not produce grounded clips for this pitch." }, { status:422 });
+    if (!recipe.primary_clips?.length) return NextResponse.json({ error:"The Brain found sources but couldn't turn them into grounded clips. Try an alternate pitch." }, { status:422 });
 
-    // Only write source rows after the reel recipe succeeds, preventing junk rows on failed attempts.
-    const sourceRows = ranked.slice(0,4).map(src=>({
+    const sourceRows = ranked.slice(0,4).map((src:any)=>({
       slate_date:today,candidate_kind:"source",headline:story.headline,sport:story.sport,summary:story.summary,source_urls:[`https://www.youtube.com/watch?v=${src.search.videoId}`],youtube_video_id:src.search.videoId,youtube_channel_id:src.search.channelId,youtube_channel_title:src.search.channelTitle,view_count:src.stats.viewCount,published_at:src.search.publishedAt,score:src.score,score_breakdown:{source_score:src.score,trend_evidence:story.popularityEvidence},selected:false,rejection_reason:null,
     }));
     await db.from("candidates").delete().eq("slate_date",today).eq("candidate_kind","source").eq("headline",story.headline);
