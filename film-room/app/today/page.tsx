@@ -12,49 +12,37 @@ export default async function TodayPage() {
 
   const [{ data: reels }, { data: pitches }] = await Promise.all([
     db.from("reels").select("*").eq("slate_date", today).order("slot"),
-    db
-      .from("candidates")
-      .select("id,headline,sport,summary,score,score_breakdown,selected")
-      .eq("slate_date", today)
-      .eq("candidate_kind", "pitch")
-      .order("score", { ascending: false }),
+    db.from("candidates").select("id,headline,sport,summary,score,score_breakdown,selected").eq("slate_date", today).eq("candidate_kind", "pitch").order("score", { ascending: false }),
   ]);
 
   const list = (reels ?? []) as Reel[];
   const pitchList = pitches ?? [];
+  const needsMore = list.length < 3;
 
   return (
     <div className="p-8 max-w-5xl">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <div className="label-eyebrow mb-1">
-            {new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
-          </div>
+          <div className="label-eyebrow mb-1">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}</div>
           <h1 className="font-display text-3xl tracking-wide">TODAY&apos;S DOSE</h1>
         </div>
         <GenerateButton hasSlate={pitchList.length > 0 || list.length > 0} />
       </div>
 
-      {list.length > 0 ? (
-        <div className="space-y-3">
+      {list.length > 0 && (
+        <div className="space-y-3 mb-8">
           <div className="flex items-end justify-between mb-3">
-            <div>
-              <div className="label-eyebrow mb-1">PRODUCTION SLATE</div>
-              <h2 className="font-display text-2xl tracking-wide">YOUR 3 REEL JOBS</h2>
-            </div>
+            <div><div className="label-eyebrow mb-1">PRODUCTION SLATE</div><h2 className="font-display text-2xl tracking-wide">{list.length}/3 REEL JOBS READY</h2></div>
           </div>
-          {list.map((reel) => (
-            <TodayReelRow key={reel.id} reel={reel} />
-          ))}
-        </div>
-      ) : pitchList.length > 0 ? (
-        <PitchBoard pitches={pitchList as any} />
-      ) : (
-        <div className="panel p-8 text-center text-dim">
-          No pitches generated yet today. Click <span className="text-paper">Generate Today&apos;s Pitches</span> to
-          have the Brain build a board of current, seasonal and evergreen ideas.
+          {list.map((reel) => <TodayReelRow key={reel.id} reel={reel} />)}
         </div>
       )}
+
+      {pitchList.length > 0 && needsMore ? (
+        <PitchBoard pitches={pitchList as any} />
+      ) : list.length === 0 && pitchList.length === 0 ? (
+        <div className="panel p-8 text-center text-dim">No pitches generated yet today. Click <span className="text-paper">Generate Today&apos;s Pitches</span> to have the Brain build a board of current, seasonal and evergreen ideas.</div>
+      ) : null}
     </div>
   );
 }
