@@ -2,35 +2,160 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --jelly: #25799b;
+  --sinbad: #a2c5d8;
+  --sidecar: #f7e6cb;
+  --milan: #cb1b03;
+  --paper: #fffdf8;
+  --ink: #17313a;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background:
+    radial-gradient(circle at 12% 8%, rgba(162, 197, 216, 0.22), transparent 24rem),
+    radial-gradient(circle at 88% 18%, rgba(247, 230, 203, 0.7), transparent 28rem),
+    linear-gradient(180deg, #fffdf9 0%, #fffaf1 100%);
+  color: var(--ink);
+}
+
 @layer base {
   * {
     @apply border-rule;
   }
+
   ::selection {
-    @apply bg-tally text-ink;
+    @apply bg-sinbad text-ink;
+  }
+
+  button,
+  a,
+  input,
+  textarea,
+  select {
+    transition:
+      color 220ms ease,
+      background-color 220ms ease,
+      border-color 220ms ease,
+      box-shadow 220ms ease,
+      transform 220ms ease,
+      opacity 220ms ease;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 2px solid rgba(37, 121, 155, 0.45);
+    outline-offset: 3px;
   }
 }
 
 @layer components {
   .panel {
-    @apply bg-bay border border-rule rounded-sm;
+    @apply bg-bay border border-rule rounded-xl shadow-editorial;
+    animation: panelIn 420ms ease both;
   }
+
+  .panel:hover {
+    @apply shadow-lift;
+    transform: translateY(-2px);
+    border-color: rgba(37, 121, 155, 0.28);
+  }
+
   .btn {
-    @apply px-4 py-2 rounded-sm text-sm font-medium tracking-wide transition-colors;
+    @apply px-4 py-2.5 rounded-full text-sm font-semibold tracking-wide transition-all duration-300;
   }
+
+  .btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+  }
+
+  .btn:active:not(:disabled) {
+    transform: translateY(0) scale(0.98);
+  }
+
   .btn-primary {
-    @apply btn bg-tally text-ink hover:brightness-110;
+    @apply btn bg-jelly text-white shadow-[0_8px_20px_rgba(37,121,155,0.18)];
   }
+
+  .btn-primary:hover:not(:disabled) {
+    @apply bg-[#1f6c8a] shadow-[0_12px_26px_rgba(37,121,155,0.24)];
+  }
+
   .btn-ghost {
-    @apply btn bg-transparent border border-rule text-paper hover:border-dim;
+    @apply btn bg-white/70 border border-rule text-paper hover:border-jelly hover:bg-white;
   }
+
   .btn-go {
-    @apply btn bg-go/20 text-go border border-go/40 hover:bg-go/30;
+    @apply btn bg-go/10 text-go border border-go/25 hover:bg-go/15;
   }
+
   .btn-signal {
-    @apply btn bg-signal/20 text-signal border border-signal/40 hover:bg-signal/30;
+    @apply btn bg-signal/10 text-signal border border-signal/25 hover:bg-signal/15;
   }
+
   .label-eyebrow {
-    @apply font-mono text-xs uppercase tracking-[0.15em] text-dim;
+    @apply font-mono text-xs uppercase tracking-[0.17em] text-dim;
+  }
+
+  .page-shell {
+    animation: pageReveal 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .soft-card {
+    @apply rounded-2xl border border-rule bg-white/75 shadow-editorial backdrop-blur-sm;
+  }
+
+  .animated-dot {
+    animation: breathe 2.2s ease-in-out infinite;
+  }
+
+  .shimmer-line {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .shimmer-line::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
+}
+
+@keyframes pageReveal {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.995); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(37,121,155,0.18); }
+  50% { transform: scale(1.12); box-shadow: 0 0 0 8px rgba(37,121,155,0); }
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  55%, 100% { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }
