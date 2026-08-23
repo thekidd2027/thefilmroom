@@ -1,7 +1,7 @@
 export type TranscriptChunk = {
   text: string;
-  offset: number; // milliseconds
-  duration: number; // milliseconds
+  offset: number;
+  duration: number;
   lang?: string;
 };
 
@@ -39,24 +39,55 @@ async function supadataFetch(path: string, init?: RequestInit) {
   return body;
 }
 
-export async function getTranscript(url: string): Promise<TranscriptChunk[]> {
-  const params = new URLSearchParams({ url, lang: "en", text: "false", mode: "auto" });
-  let data = await supadataFetch(`/transcript?${params.toString()}`);
-  if (data.jobId) {
-    data = await pollJob(`/transcript/${data.jobId}`, 75_000);
+function normalizeTranscript(data: any): TranscriptChunk[] {
+  if (!Array.isArray(data?.content)) return [];
+  return data.content
+    .map((c: any) => ({
+      text: String(c.text ?? ""),
+      offset: Number(c.offset ?? c.start ?? 0),
+      duration: Number(c.duration ?? 0),
+      lang: c.lang ?? data.lang,
+    }))
+    .filter((c: TranscriptChunk) => c.text.trim().length > 0);
+}
+
+function youtubeId(url: string) {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes("youtu.be")) return u.pathname.replace(/^\//, "");
+    return u.searchParams.get("v") ?? "";
+  } catch {
+    return "";
   }
-  if (!Array.isArray(data.content)) return [];
-  return data.content.map((c: any) => ({
-    text: String(c.text ?? ""),
-    offset: Number(c.offset ?? 0),
-    duration: Number(c.duration ?? 0),
-    lang: c.lang,
-  }));
+}
+
+export async function getTranscript(url: string): Promise<TranscriptChunk[]> {
+  const attempts: Array<() => Promise<any>> = [
+    () => supadataFetch(`/transcript?${new URLSearchParams({ url, lang: "en", text: "false", mode: "auto" }).toString()}`),
+    () => supadataFetch(`/transcript?${new URLSearchParams({ url, text: "false", mode: "auto" }).toString()}`),
+  ];
+
+  const id = youtubeId(url);
+  if (id) {
+    attempts.push(() => supadataFetch(`/youtube/transcript?${new URLSearchParams({ videoId: id, lang: "en" }).toString()}`));
+  }
+
+  let lastError: unknown = null;
+  for (const attempt of attempts) {
+    try {
+      let data = await attempt();
+      if (data?.jobId && !data?.content) data = await pollJob(`/transcript/${data.jobId}`, 55_000);
+      const normalized = normalizeTranscript(data);
+      if (normalized.length) return normalized;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (lastError) console.warn("All Supadata transcript strategies failed", lastError);
+  return [];
 }
 
 export async function inspectVideo(url: string): Promise<VideoVisualMoment[]> {
-  // Supadata Extract analyzes what is seen and heard in the source video.
-  // Keep this for shorter source videos; very long compilations may exceed provider limits.
   const schema = {
     type: "object",
     properties: {
@@ -74,25 +105,47 @@ export async function inspectVideo(url: string): Promise<VideoVisualMoment[]> {
             verticalCrop: { type: "number", description: "1-10 suitability for a 9:16 crop with manual keyframes" },
             emotion: { type: "string", description: "crowd eruption, tension, celebration, heartbreak, etc." },
           },
-          required: ["timestamp", "description", "cameraAngle", "quality", "verticalCrop"],
+          required: ["timestamp", "description"],
         },
       },
     },
     required: ["moments"],
   };
 
-  const job = await supadataFetch(`/extract`, {
-    method: "POST",
-    body: JSON.stringify({
-      url,
-      prompt:
-        "Identify the most useful sports-editing moments and camera angles. Prioritize recognizable plays, setup/stakes, crowd reaction, replay angles, celebrations, atmosphere, and shots that crop well vertically. Do not invent timestamps.",
-      schema,
-    }),
-  });
-  if (!job.jobId) return [];
-  const result = await pollJob(`/extract/${job.jobId}`, 95_000);
-  return (result?.data?.moments ?? result?.moments ?? []) as VideoVisualMoment[];
+  const prompt = "Identify 8-16 useful sports-editing moments with exact source timestamps. Prioritize recognizable plays, setup/stakes, crowd reaction, replay angles, celebrations, atmosphere, entrances, player closeups, and shots that crop well vertically. Return only moments you can actually locate; never invent timestamps.";
+
+  const run = async (withSchema: boolean) => {
+    let job = await supadataFetch(`/extract`, {
+      method: "POST",
+      body: JSON.stringify(withSchema ? { url, prompt, schema } : { url, prompt }),
+    });
+    if (job?.data || job?.moments) return job;
+    if (!job?.jobId) return null;
+    return pollJob(`/extract/${job.jobId}`, 70_000);
+  };
+
+  let result: any = null;
+  try {
+    result = await run(true);
+  } catch (error) {
+    console.warn("Supadata structured extract failed; retrying simple extract", error);
+    try { result = await run(false); } catch (fallbackError) { console.warn("Supadata simple extract failed", fallbackError); }
+  }
+
+  const moments = result?.data?.moments ?? result?.moments ?? result?.data;
+  if (!Array.isArray(moments)) return [];
+  return moments
+    .filter((m: any) => m?.timestamp && m?.description)
+    .map((m: any) => ({
+      timestamp: String(m.timestamp),
+      endTimestamp: m.endTimestamp ? String(m.endTimestamp) : undefined,
+      description: String(m.description),
+      cameraAngle: m.cameraAngle ? String(m.cameraAngle) : "source footage",
+      subjects: Array.isArray(m.subjects) ? m.subjects.map(String) : [],
+      quality: Number(m.quality ?? 7),
+      verticalCrop: Number(m.verticalCrop ?? 7),
+      emotion: m.emotion ? String(m.emotion) : undefined,
+    }));
 }
 
 async function pollJob(path: string, timeoutMs: number) {
@@ -100,7 +153,7 @@ async function pollJob(path: string, timeoutMs: number) {
   while (Date.now() - started < timeoutMs) {
     const data = await supadataFetch(path);
     if (data.status === "completed" || data.data || data.content) return data;
-    if (data.status === "failed") throw new Error(data.error || "Supadata job failed");
+    if (data.status === "failed") throw new Error(data.error || data.message || "Supadata job failed");
     await new Promise((r) => setTimeout(r, 1200));
   }
   throw new Error("Supadata job timed out.");
