@@ -17,7 +17,7 @@ export default function Nav() {
   const pathname = usePathname();
 
   return (
-    <nav className="w-60 shrink-0 border-r border-rule bg-white/78 backdrop-blur-xl flex flex-col sticky top-0 h-screen shadow-[10px_0_30px_rgba(37,121,155,0.04)]">
+    <nav className="w-60 shrink-0 border-r border-rule bg-white/78 backdrop-blur-xl flex flex-col sticky top-0 h-screen shadow-[10px_0_30px_rgba(37,121,155,0.04)] z-30">
       <div className="px-6 py-7 flex items-center gap-3">
         <span className="animated-dot w-3 h-3 rounded-full bg-jelly" />
         <div>
@@ -26,7 +26,7 @@ export default function Nav() {
         </div>
       </div>
 
-      <div className="flex-1 px-3 pt-2">
+      <div className="flex-1 px-3 pt-2 nav-depth">
         {LINKS.map((link, index) => {
           const active = pathname?.startsWith(link.href);
           return (
@@ -35,9 +35,9 @@ export default function Nav() {
               href={link.href}
               style={{ animationDelay: `${index * 45}ms` }}
               className={clsx(
-                "group relative block px-4 py-3 mb-1.5 rounded-xl text-sm font-medium overflow-hidden animate-[pageReveal_420ms_ease_both]",
+                "nav-tab-3d group relative block px-4 py-3 mb-1.5 rounded-[1.15rem] text-sm font-medium overflow-hidden animate-[pageReveal_420ms_ease_both]",
                 active
-                  ? "bg-sidecar text-ink shadow-[0_7px_18px_rgba(37,121,155,0.07)]"
+                  ? "active bg-sidecar text-ink shadow-[0_9px_22px_rgba(37,121,155,0.09)]"
                   : "text-dim hover:text-ink hover:bg-sinbad/15"
               )}
             >
@@ -45,6 +45,7 @@ export default function Nav() {
                 "absolute left-0 top-1/2 -translate-y-1/2 h-0 w-1 rounded-r-full bg-jelly transition-all duration-300",
                 active ? "h-7" : "group-hover:h-4"
               )} />
+              <span className="nav-tab-shine" />
               <span className="relative transition-transform duration-300 group-hover:translate-x-1 inline-block">{link.label}</span>
             </Link>
           );
