@@ -5,7 +5,19 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 
 type Pitch = { id:string; headline:string; sport:string; summary:string|null; score:number|null; score_breakdown:any; selected:boolean };
-type JobState = { id:string; headline:string; status:"queued"|"building"|"ready"|"failed"; message?:string };
+type ManualSource = { video_id:string; title:string; channel_title:string; url:string };
+type JobState = {
+  id:string;
+  headline:string;
+  slot:number;
+  status:"queued"|"building"|"ready"|"failed";
+  message?:string;
+  needsManualTranscript?:boolean;
+  manualSource?:ManualSource|null;
+  manualTranscript?:string;
+};
+
+type BuildError = Error & { payload?:any };
 
 const formatNames:any = {
   INTERVIEW_STORY:"INTERVIEW → STORY",
@@ -59,11 +71,19 @@ export default function PitchBoard({pitches}:{pitches:Pitch[]}) {
     finally{setMoreLoading(false)}
   }
 
-  async function callBuild(id:string,slot:number){
-    const res=await fetch("/api/build-one",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,slot})});
+  async function callBuild(id:string,slot:number,manualTranscript?:string,manualVideoId?:string){
+    const res=await fetch("/api/build-one",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({id,slot,manualTranscript,manualVideoId})
+    });
     const raw=await res.text(); let data:any={};
     try{data=raw?JSON.parse(raw):{}}catch{throw new Error(`Server returned an unreadable response (${res.status}).`)}
-    if(!res.ok||data?.error)throw new Error(data?.error??`Build failed (${res.status})`);
+    if(!res.ok||data?.error){
+      const err = new Error(data?.error??`Build failed (${res.status})`) as BuildError;
+      err.payload = data;
+      throw err;
+    }
     return data;
   }
 
@@ -71,21 +91,48 @@ export default function PitchBoard({pitches}:{pitches:Pitch[]}) {
     if(selected.length<1)return;
     setLoading(true); setError(null);
     const chosen=selected.map(id=>pitches.find(p=>p.id===id)!).filter(Boolean);
-    setJobs(chosen.map(p=>({id:p.id,headline:p.headline,status:"queued"})));
+    setJobs(chosen.map((p,i)=>({id:p.id,headline:p.headline,slot:i+1,status:"queued"})));
     let ready=0;
     for(let i=0;i<chosen.length;i++){
       const pitch=chosen[i];
-      setJobs(c=>c.map(j=>j.id===pitch.id?{...j,status:"building",message:"Film Room is assembling this reel now…"}:j));
+      setJobs(c=>c.map(j=>j.id===pitch.id?{...j,status:"building",message:"Film Room is assembling this reel now…",needsManualTranscript:false}:j));
       try{
         await callBuild(pitch.id,i+1); ready++;
         setJobs(c=>c.map(j=>j.id===pitch.id?{...j,status:"ready",message:"Editor-ready recipe built."}:j));
       }catch(e:any){
-        setJobs(c=>c.map(j=>j.id===pitch.id?{...j,status:"failed",message:e?.message??"Build failed"}:j));
+        const payload=(e as BuildError)?.payload;
+        setJobs(c=>c.map(j=>j.id===pitch.id?{
+          ...j,
+          status:"failed",
+          message:e?.message??"Build failed",
+          needsManualTranscript:Boolean(payload?.needs_manual_transcript),
+          manualSource:payload?.manual_source??null,
+          manualTranscript:j.manualTranscript??""
+        }:j));
       }
     }
     setLoading(false);
     if(ready>0)router.refresh();
-    if(ready<chosen.length)setError(`${ready}/${chosen.length} reels built successfully. ${chosen.length-ready} failed — swap in an alternate if needed.`);
+    if(ready<chosen.length)setError(`${ready}/${chosen.length} reels built automatically. Anything marked SOURCE HELP can be recovered with a timestamped transcript — you do not need to abandon the pitch.`);
+  }
+
+  function updateManualTranscript(id:string,value:string){
+    setJobs(c=>c.map(j=>j.id===id?{...j,manualTranscript:value}:j));
+  }
+
+  async function retryManual(job:JobState){
+    if(!job.manualTranscript?.trim()) return;
+    setError(null); setLoading(true);
+    setJobs(c=>c.map(j=>j.id===job.id?{...j,status:"building",message:"Using the editor transcript to ground the reel…"}:j));
+    try{
+      await callBuild(job.id,job.slot,job.manualTranscript,job.manualSource?.video_id);
+      setJobs(c=>c.map(j=>j.id===job.id?{...j,status:"ready",message:"Editor-ready recipe built from the supplied transcript.",needsManualTranscript:false}:j));
+      router.refresh();
+    }catch(e:any){
+      const payload=(e as BuildError)?.payload;
+      setJobs(c=>c.map(j=>j.id===job.id?{...j,status:"failed",message:e?.message??"Manual transcript build failed",needsManualTranscript:Boolean(payload?.needs_manual_transcript??true),manualSource:payload?.manual_source??j.manualSource}:j));
+      setError(e?.message??"Manual transcript build failed.");
+    }finally{setLoading(false)}
   }
 
   function card(pitch:Pitch,index:number){
@@ -115,6 +162,7 @@ export default function PitchBoard({pitches}:{pitches:Pitch[]}) {
   const alts=pitches.filter(p=>!picks.some(x=>x.id===p.id));
   const pairing=picks[0]?.score_breakdown?.pairing_logic??picks[0]?.score_breakdown?.story?.pairingLogic;
   const activeJob=jobs.find(j=>j.status==="building") ?? jobs.find(j=>j.status==="queued") ?? jobs[jobs.length-1];
+  const manualHelpJobs=jobs.filter(j=>j.needsManualTranscript);
 
   const overlay=loading&&typeof document!=="undefined"?createPortal(
     <div className="fixed inset-0 z-[9999] intelligence-overlay flex items-center justify-center p-4 md:p-8 overflow-y-auto">
@@ -179,6 +227,7 @@ export default function PitchBoard({pitches}:{pitches:Pitch[]}) {
     <div className="soft-card p-6 flex items-end justify-between gap-5"><div><div className="label-eyebrow mb-1">FILM ROOM / EDITORIAL DESK</div><h2 className="font-display text-3xl tracking-wide text-ink">TODAY'S RECOMMENDED TWO</h2><p className="text-dim text-sm mt-1 max-w-2xl">The Brain is optimizing for follower growth, entertainment and long-term Film Room identity — not just whatever is trending.</p></div><div className="text-right shrink-0"><div className="font-mono text-xs tracking-[.16em] text-dim mb-2">{selected.length} SELECTED · 2/DAY TARGET</div><button onClick={buildSelected} disabled={!selected.length||loading} className="btn-primary disabled:opacity-40">Build {selected.length} Selected Reel{selected.length===1?"":"s"}</button></div></div>
     {pairing&&<div className="pairing-note"><span>PAIRING LOGIC</span>{pairing}</div>}
     {error&&<div className="rounded-3xl border border-milan/20 bg-milan/5 px-5 py-4 text-signal text-sm">{error}</div>}
+    {manualHelpJobs.length>0&&<div className="space-y-4">{manualHelpJobs.map(job=><div key={job.id} className="soft-card p-6 border-milan/10"><div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4"><div><div className="label-eyebrow text-jelly">SOURCE HELP · OPTIONAL MANUAL FALLBACK</div><h3 className="font-display text-2xl tracking-wide text-ink mt-1">{job.headline}</h3><p className="text-sm text-dim mt-2 max-w-2xl">Automatic grounding could not read this source. Paste a timestamped transcript and Film Room will resume the same reel instead of making you choose another idea.</p></div>{job.manualSource&&<a href={job.manualSource.url} target="_blank" rel="noreferrer" className="btn-ghost shrink-0">Open source ↗</a>}</div>{job.manualSource&&<div className="data-cell mt-4"><div className="data-label">SOURCE FILM ROOM CHOSE</div><div className="text-sm text-ink">{job.manualSource.title}</div><div className="text-xs text-dim mt-1">{job.manualSource.channel_title}</div></div>}<textarea value={job.manualTranscript??""} onChange={e=>updateManualTranscript(job.id,e.target.value)} rows={8} placeholder={"Paste timestamped transcript here…\n00:12 Player talks about the rivalry\n00:18 We knew the stadium would be loud\n00:27 I saw the safety come down"} className="mt-4 w-full rounded-[1.5rem] border border-jelly/15 bg-white px-4 py-4 font-mono text-xs leading-6 text-ink shadow-inner focus:border-jelly/40"/><div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4"><div className="text-xs text-dim">Tip: YouTube's “Show transcript” timestamps work. Film Room needs timestamps so it never invents clip locations.</div><button onClick={()=>retryManual(job)} disabled={!job.manualTranscript?.trim()||loading} className="btn-primary disabled:opacity-40 shrink-0">Resume This Reel</button></div></div>)}</div>}
     <div className="grid md:grid-cols-2 gap-5">{picks.map((p,i)=>card(p,i))}</div>
     <div><div className="flex items-end justify-between mb-3"><div><div className="label-eyebrow">BACKUP BOARD</div><h3 className="font-display text-2xl tracking-wide text-ink">THREE ALTERNATE PITCHES</h3></div><div className="text-xs text-dim">Swap one in · or build a third post</div></div><div className="grid lg:grid-cols-3 gap-4">{alts.map((p,i)=>card(p,i+2))}</div></div>
     <button onClick={generateOneMore} disabled={moreLoading||loading} className="w-full min-h-[150px] rounded-[2rem] border border-dashed border-jelly/30 bg-sinbad/8 hover:bg-sinbad/14 group flex items-center justify-center gap-5 p-7"><span className="orb-button">+</span><div className="text-left"><div className="font-display text-xl tracking-wide text-ink">{moreLoading?"THINKING…":"GENERATE ANOTHER ANGLE"}</div><div className="text-xs text-dim mt-1">Ask the editorial desk for one more option without replacing today's board.</div></div></button>
