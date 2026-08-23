@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Oswald, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
+import "./transitions.css";
 import Nav from "@/components/Nav";
 import RouteStage from "@/components/RouteStage";
 
