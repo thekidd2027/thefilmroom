@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-rule;
+  }
+  ::selection {
+    @apply bg-tally text-ink;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply bg-bay border border-rule rounded-sm;
+  }
+  .btn {
+    @apply px-4 py-2 rounded-sm text-sm font-medium tracking-wide transition-colors;
+  }
+  .btn-primary {
+    @apply btn bg-tally text-ink hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent border border-rule text-paper hover:border-dim;
+  }
+  .btn-go {
+    @apply btn bg-go/20 text-go border border-go/40 hover:bg-go/30;
+  }
+  .btn-signal {
+    @apply btn bg-signal/20 text-signal border border-signal/40 hover:bg-signal/30;
+  }
+  .label-eyebrow {
+    @apply font-mono text-xs uppercase tracking-[0.15em] text-dim;
+  }
+}
