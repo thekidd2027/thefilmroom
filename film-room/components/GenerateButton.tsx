@@ -7,8 +7,8 @@ const stages = [
   { label: "SCANNING THE WIRE", detail: "Looking for current college football and basketball stories" },
   { label: "CHECKING THE ARCHIVE", detail: "Finding evergreen moments, rivalries and stories worth resurfacing" },
   { label: "READING THE ROOM", detail: "Ranking ideas for interest, timing and Film Room fit" },
-  { label: "BUILDING THE SLATE", detail: "Turning the strongest ideas into four reel concepts" },
-  { label: "FINAL EDITORIAL PASS", detail: "Checking variety, hooks and brand alignment" },
+  { label: "BUILDING THE PITCH BOARD", detail: "Turning the strongest angles into a clean set of ideas for you to choose from" },
+  { label: "FINAL EDITORIAL PASS", detail: "Checking variety, hooks and brand alignment before showing the board" },
 ];
 
 export default function GenerateButton({ hasSlate }: { hasSlate: boolean }) {
@@ -47,7 +47,7 @@ export default function GenerateButton({ hasSlate }: { hasSlate: boolean }) {
     <>
       <div className="text-right">
         <button onClick={generate} disabled={loading} className="btn-primary disabled:opacity-50">
-          {loading ? "Building today's slate…" : hasSlate ? "Regenerate Slate" : "Generate Today's Slate"}
+          {loading ? "Building today's pitches…" : hasSlate ? "Regenerate Pitches" : "Generate Today's Pitches"}
         </button>
         {error && <div className="text-signal text-sm mt-2 max-w-xs">{error}</div>}
       </div>
@@ -58,7 +58,7 @@ export default function GenerateButton({ hasSlate }: { hasSlate: boolean }) {
             <div className="border-b border-[#30332f] px-7 py-5 flex items-center justify-between">
               <div>
                 <div className="label-eyebrow mb-1">FILM ROOM / NEWS DESK</div>
-                <div className="font-display text-2xl tracking-wide text-paper">BUILDING TODAY&apos;S DOSE</div>
+                <div className="font-display text-2xl tracking-wide text-paper">BUILDING TODAY&apos;S PITCH BOARD</div>
               </div>
               <div className="h-3 w-3 rounded-full bg-[#e7a52f] animate-pulse shadow-[0_0_14px_rgba(231,165,47,0.65)]" />
             </div>
@@ -71,10 +71,7 @@ export default function GenerateButton({ hasSlate }: { hasSlate: boolean }) {
               <div className="text-dim text-sm leading-6 min-h-12">{stages[stage].detail}</div>
 
               <div className="mt-6 h-1 bg-[#292c29] overflow-hidden">
-                <div
-                  className="h-full bg-[#e7a52f] transition-all duration-700 ease-out"
-                  style={{ width: `${((stage + 1) / stages.length) * 100}%` }}
-                />
+                <div className="h-full bg-[#e7a52f] transition-all duration-700 ease-out" style={{ width: `${((stage + 1) / stages.length) * 100}%` }} />
               </div>
 
               <div className="mt-7 space-y-3">
@@ -90,7 +87,7 @@ export default function GenerateButton({ hasSlate }: { hasSlate: boolean }) {
             </div>
 
             <div className="border-t border-[#30332f] px-7 py-4 font-mono text-[11px] tracking-[0.16em] text-[#6f736e]">
-              THE BRAIN IS ON ASSIGNMENT — THIS CAN TAKE A MOMENT
+              NO SOURCE CREDITS ARE SPENT UNTIL YOU PICK THE THREE WORTH PRODUCING
             </div>
           </div>
         </div>
