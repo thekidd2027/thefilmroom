@@ -1,17 +1,63 @@
-import OpenAI from "openai";
 import { BrandBrain } from "./brandBrain";
 import { YouTubeSearchResult, VideoStats } from "./youtube";
-import { TranscriptChunk, transcriptToText, VideoVisualMoment, parseTimestamp } from "./supadata";
+import { TranscriptChunk, transcriptToText, VideoVisualMoment } from "./supadata";
 import { youtubeTimestampUrl } from "./time";
 import type { ClipRef, EditShot, MusicOption, StoryResearch } from "./types";
 
-const MODEL = process.env.OPENAI_MODEL ?? "gpt-5.6-terra";
-const RESEARCH_MODEL = process.env.OPENAI_RESEARCH_MODEL ?? MODEL;
+const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5";
+const RESEARCH_MODEL = process.env.ANTHROPIC_RESEARCH_MODEL ?? MODEL;
+const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
-function client() {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("Missing OPENAI_API_KEY env var.");
-  return new OpenAI({ apiKey });
+type ClaudeContentBlock = {
+  type: string;
+  text?: string;
+};
+
+type ClaudeMessageResponse = {
+  content?: ClaudeContentBlock[];
+  error?: { message?: string };
+};
+
+async function claude(prompt: string, options?: { model?: string; webSearch?: boolean; maxTokens?: number }) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY env var.");
+
+  const body: Record<string, unknown> = {
+    model: options?.model ?? MODEL,
+    max_tokens: options?.maxTokens ?? 5000,
+    messages: [{ role: "user", content: prompt }],
+  };
+
+  if (options?.webSearch) {
+    body.tools = [
+      {
+        type: "web_search_20250305",
+        name: "web_search",
+        max_uses: 5,
+      },
+    ];
+  }
+
+  const response = await fetch(ANTHROPIC_API_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const data = (await response.json()) as ClaudeMessageResponse;
+  if (!response.ok) {
+    throw new Error(data?.error?.message ?? `Anthropic request failed (${response.status})`);
+  }
+
+  return (data.content ?? [])
+    .filter((block) => block.type === "text" && typeof block.text === "string")
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
 }
 
 function brainPrompt(b: BrandBrain) {
@@ -35,7 +81,20 @@ Do not confuse popularity with story quality. Research what fans/media actually 
 
 function parseJson<T>(text: string, fallback: T): T {
   const cleaned = text.trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
-  try { return JSON.parse(cleaned) as T; } catch { return fallback; }
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch {
+    const firstBrace = cleaned.indexOf("{");
+    const lastBrace = cleaned.lastIndexOf("}");
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      try {
+        return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)) as T;
+      } catch {
+        return fallback;
+      }
+    }
+    return fallback;
+  }
 }
 
 export type TrendStory = {
@@ -52,7 +111,6 @@ export type TrendStory = {
 };
 
 export async function researchTodaysStories(brandBrain: BrandBrain, dateIso: string): Promise<TrendStory[]> {
-  const openai = client();
   const prompt = `${brainPrompt(brandBrain)}
 Today is ${dateIso}. Research the CURRENT college football and college basketball landscape using web search. Check major media and broad conversation, especially ESPN, Bleacher Report, AP/Reuters, NCAA/conference/team coverage, current scores/results, rankings, upcoming marquee games, player trends, anniversaries and viral/culturally sticky moments.
 
@@ -60,12 +118,13 @@ Return the 10 strongest Reel story candidates for Film Room. The page is trying 
 
 Return ONLY JSON: {"stories":[{"headline":"...","sport":"football|basketball","summary":"...","whyToday":"...","viewerFeeling":"...","searchQueries":["YouTube query 1","query 2"],"popularityEvidence":["specific evidence"],"trendSources":[{"label":"ESPN","url":"https://..."}],"template":"MOMENT|FEELING|STORY|TAKE","fanAllegianceLogic":"..."}]}`;
 
-  const response = await openai.responses.create({
+  const text = await claude(prompt, {
     model: RESEARCH_MODEL,
-    input: prompt,
-    tools: [{ type: "web_search" } as any],
+    webSearch: true,
+    maxTokens: 7000,
   });
-  return parseJson<{ stories: TrendStory[] }>(response.output_text, { stories: [] }).stories ?? [];
+
+  return parseJson<{ stories: TrendStory[] }>(text, { stories: [] }).stories ?? [];
 }
 
 export type ScoredCandidate = {
@@ -85,7 +144,6 @@ export async function scoreVideoCandidates(
   story: TrendStory,
   items: { search: YouTubeSearchResult; stats: VideoStats }[]
 ): Promise<ScoredCandidate[]> {
-  const openai = client();
   const payload = items.map((it) => ({
     title: it.search.title,
     channelTitle: it.search.channelTitle,
@@ -96,11 +154,13 @@ export async function scoreVideoCandidates(
     commentCount: it.stats.commentCount,
     durationSeconds: it.stats.durationSeconds,
   }));
-  const response = await openai.responses.create({
-    model: MODEL,
-    input: `${brainPrompt(brandBrain)}\nStory: ${JSON.stringify(story)}\nScore each source candidate for usefulness in telling THIS story. "rightsRisk" must be clear/caution/blocked, with public broadcast/highlight footage usually caution unless explicit reuse permission is evident. Return ONLY JSON {"candidates":[...]}. Candidate order must match input order. Fields: headline,sport,summary,wowFactor,storyValue,brandFit,verticalViability,rightsRisk,rightsReason.\n${JSON.stringify(payload)}`,
-  });
-  return parseJson<{ candidates: ScoredCandidate[] }>(response.output_text, { candidates: [] }).candidates ?? [];
+
+  const text = await claude(
+    `${brainPrompt(brandBrain)}\nStory: ${JSON.stringify(story)}\nScore each source candidate for usefulness in telling THIS story. "rightsRisk" must be clear/caution/blocked, with public broadcast/highlight footage usually caution unless explicit reuse permission is evident. Return ONLY JSON {"candidates":[...]}. Candidate order must match input order. Fields: headline,sport,summary,wowFactor,storyValue,brandFit,verticalViability,rightsRisk,rightsReason.\n${JSON.stringify(payload)}`,
+    { model: MODEL, maxTokens: 4500 }
+  );
+
+  return parseJson<{ candidates: ScoredCandidate[] }>(text, { candidates: [] }).candidates ?? [];
 }
 
 export type SourceInspection = {
@@ -127,7 +187,6 @@ export async function buildGroundedRecipe(
   story: TrendStory,
   sources: SourceInspection[]
 ): Promise<ReelRecipe> {
-  const openai = client();
   const sourcePayload = sources.map((s) => ({
     videoId: s.search.videoId,
     title: s.search.title,
@@ -139,9 +198,8 @@ export async function buildGroundedRecipe(
     visualInspection: s.visuals,
   }));
 
-  const response = await openai.responses.create({
-    model: MODEL,
-    input: `${brainPrompt(brandBrain)}
+  const text = await claude(
+    `${brainPrompt(brandBrain)}
 Build the final editor-ready recipe for this story: ${JSON.stringify(story)}
 Ground every clip timestamp in the transcript and/or visual inspection provided. Do not invent. Prefer multiple camera angles/sources when they materially improve the story. For a general hype/feeling reel enforce fan-allegiance continuity. For rivalry/matchup reels conflict is allowed.
 
@@ -159,14 +217,18 @@ Return ONLY JSON with this shape:
 }
 
 Sources:\n${JSON.stringify(sourcePayload)}`,
-  });
+    { model: MODEL, maxTokens: 9000 }
+  );
 
-  const recipe = parseJson<ReelRecipe>(response.output_text, {
+  const recipe = parseJson<ReelRecipe>(text, {
     caption: "",
     cover_text: "",
     template_name: story.template,
     target_length_seconds: 22,
-    primary_clips: [], replacement_clips: [], edit_notes: [], music_options: [],
+    primary_clips: [],
+    replacement_clips: [],
+    edit_notes: [],
+    music_options: [],
     story_research: {
       why_today: story.whyToday,
       viewer_feeling: story.viewerFeeling,
@@ -192,6 +254,7 @@ Sources:\n${JSON.stringify(sourcePayload)}`,
       direct_url: youtubeTimestampUrl(clip.video_id, start),
     };
   };
+
   recipe.primary_clips = (recipe.primary_clips ?? []).map(decorate);
   recipe.replacement_clips = (recipe.replacement_clips ?? []).slice(0, 3).map(decorate);
   recipe.edit_notes = (recipe.edit_notes ?? []).map((n: any, idx) => ({
@@ -209,5 +272,6 @@ Sources:\n${JSON.stringify(sourcePayload)}`,
     fan_allegiance_logic: recipe.story_research?.fan_allegiance_logic || story.fanAllegianceLogic,
     seasonal_fit: recipe.story_research?.seasonal_fit || story.whyToday,
   };
+
   return recipe;
 }
