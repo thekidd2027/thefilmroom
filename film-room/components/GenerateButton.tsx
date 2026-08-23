@@ -33,11 +33,21 @@ export default function GenerateButton({ hasSlate }: { hasSlate: boolean }) {
     setError(null);
     try {
       const res = await fetch("/api/generate-slate", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error ?? "Generation failed");
+      const raw = await res.text();
+      let data: any = null;
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        throw new Error(
+          res.ok
+            ? "The server returned an unreadable response. Try again."
+            : `Pitch generation failed on the server (${res.status}). Check the Vercel function logs.`
+        );
+      }
+      if (!res.ok || data?.error) throw new Error(data?.error ?? `Generation failed (${res.status})`);
       router.refresh();
     } catch (e: any) {
-      setError(e.message);
+      setError(e?.message ?? "Pitch generation failed");
     } finally {
       setLoading(false);
     }
