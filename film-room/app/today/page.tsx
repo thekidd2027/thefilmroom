@@ -16,8 +16,10 @@ export default async function TodayPage() {
   ]);
 
   const list = (reels ?? []) as Reel[];
-  const pitchList = pitches ?? [];
-  const needsMore = list.length < 3;
+  const rejectedHeadlines = new Set(list.filter((r:any) => r.status === "rejected").map((r:any) => String(r.headline).trim().toLowerCase()));
+  const pitchList = (pitches ?? []).filter((p:any) => !rejectedHeadlines.has(String(p.headline).trim().toLowerCase()));
+  const activeReels = list.filter((r:any) => r.status !== "rejected");
+  const needsMore = activeReels.length < 3;
 
   return (
     <div className="p-8 max-w-5xl">
@@ -32,7 +34,7 @@ export default async function TodayPage() {
       {list.length > 0 && (
         <div className="space-y-3 mb-8">
           <div className="flex items-end justify-between mb-3">
-            <div><div className="label-eyebrow mb-1">PRODUCTION SLATE</div><h2 className="font-display text-2xl tracking-wide">{list.length}/3 REEL JOBS READY</h2></div>
+            <div><div className="label-eyebrow mb-1">PRODUCTION SLATE</div><h2 className="font-display text-2xl tracking-wide">{activeReels.length}/3 ACTIVE REEL JOBS</h2></div>
           </div>
           {list.map((reel) => <TodayReelRow key={reel.id} reel={reel} />)}
         </div>
@@ -40,8 +42,8 @@ export default async function TodayPage() {
 
       {pitchList.length > 0 && needsMore ? (
         <PitchBoard pitches={pitchList as any} />
-      ) : list.length === 0 && pitchList.length === 0 ? (
-        <div className="panel p-8 text-center text-dim">No pitches generated yet today. Click <span className="text-paper">Generate Today&apos;s Pitches</span> to have the Brain build a board of current, seasonal and evergreen ideas.</div>
+      ) : activeReels.length === 0 && pitchList.length === 0 ? (
+        <div className="panel p-8 text-center text-dim">No pitches generated yet today. Click <span className="text-paper">Generate Today&apos;s Pitches</span> to have the Brain build a fresh board.</div>
       ) : null}
     </div>
   );
