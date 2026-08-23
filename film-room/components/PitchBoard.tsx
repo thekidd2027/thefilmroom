@@ -118,12 +118,12 @@ export default function PitchBoard({pitches}:{pitches:Pitch[]}) {
 
   const overlay=loading&&typeof document!=="undefined"?createPortal(
     <div className="fixed inset-0 z-[9999] intelligence-overlay flex items-center justify-center p-4 md:p-8 overflow-y-auto">
-      <div className="w-full max-w-5xl build-lab my-auto">
+      <div className="w-full max-w-5xl build-lab build-lab-3d my-auto">
         <div className="build-aurora"/><div className="scanline"/>
         <div className="grid lg:grid-cols-[1.05fr_.95fr] gap-0 relative z-10">
           <div className="p-7 md:p-10 border-b lg:border-b-0 lg:border-r border-rule">
             <div className="flex items-center justify-between mb-8"><div><div className="label-eyebrow mb-2">FILM ROOM / ASSEMBLY ENGINE</div><div className="font-display text-3xl md:text-4xl tracking-wide text-ink">BUILDING THE REEL</div></div><div className="radar-core"><span/></div></div>
-            <div className="assembly-stage">
+            <div className="assembly-stage assembly-stage-3d">
               <div className={`assembly-piece piece-hook ${phase>=0?"locked":""}`}><span>HOOK</span></div>
               <div className={`assembly-piece piece-source ${phase>=1?"locked":""}`}><span>SOURCE</span></div>
               <div className={`assembly-piece piece-moment ${phase>=2?"locked":""}`}><span>MOMENTS</span></div>
@@ -136,14 +136,43 @@ export default function PitchBoard({pitches}:{pitches:Pitch[]}) {
             <div className="phase-track mt-7">{buildPhases.map((p,i)=><div key={p.label} className={`phase-node ${i<phase?"done":i===phase?"active":""}`}><span/>{p.label}</div>)}</div>
           </div>
 
-          <div className="p-7 md:p-10 bg-white/45">
+          <div className="p-7 md:p-10 bg-white/45 build-side-3d">
             <div className="label-eyebrow mb-5">LIVE BUILD QUEUE</div>
-            <div className="space-y-3">{jobs.map((job,i)=><div key={job.id} className={`job-pill ${job.status}`}><div className="job-number">{String(i+1).padStart(2,"0")}</div><div className="min-w-0 flex-1"><div className="font-display text-lg tracking-wide text-ink truncate">{job.headline}</div><div className="text-xs text-dim mt-1">{job.status==="building"?buildPhases[phase].detail:job.message??"Waiting in queue…"}</div></div><div className="job-status">{job.status==="ready"?"✓":job.status==="failed"?"×":job.status==="building"?"●":"○"}</div></div>)}</div>
+            <div className="space-y-3">{jobs.map((job,i)=><div key={job.id} style={{animationDelay:`${i*140}ms`}} className={`job-pill job-pill-3d ${job.status}`}><div className="job-number">{String(i+1).padStart(2,"0")}</div><div className="min-w-0 flex-1"><div className="font-display text-lg tracking-wide text-ink truncate">{job.headline}</div><div className="text-xs text-dim mt-1">{job.status==="building"?buildPhases[phase].detail:job.message??"Waiting in queue…"}</div></div><div className="job-status">{job.status==="ready"?"✓":job.status==="failed"?"×":job.status==="building"?"●":"○"}</div></div>)}</div>
             <div className="build-readout mt-7"><div><span>ACTIVE</span><b>{activeJob?.headline??"Preparing build…"}</b></div><div><span>ENGINE</span><b>FILM ROOM 01</b></div><div><span>STATE</span><b>{buildPhases[phase].label}</b></div></div>
-            <div className="mt-7 text-[10px] font-mono tracking-[.15em] text-dim leading-5">THE INTERFACE IS VISUALIZING THE BUILD WHILE THE SERVER SEARCHES, GROUNDS AND ASSEMBLES EACH REEL. COMPLETED PIECES LOCK INTO PLACE AS THE RECIPE TAKES SHAPE.</div>
+            <div className="mt-7 text-[10px] font-mono tracking-[.15em] text-dim leading-5">THE INTERFACE IS VISUALIZING THE BUILD WHILE THE SERVER SEARCHES, GROUNDS AND ASSEMBLES EACH REEL. COMPLETED PIECES FLY IN FROM THE FIELD AND LOCK INTO THE FINAL STRUCTURE.</div>
           </div>
         </div>
       </div>
+      <style jsx global>{`
+        .intelligence-overlay{perspective:1600px;perspective-origin:50% 46%}
+        .build-lab-3d{transform-style:preserve-3d;animation:labEnter3d .8s cubic-bezier(.16,1,.3,1) both;box-shadow:0 55px 140px rgba(37,121,155,.24),0 18px 45px rgba(23,49,58,.11)}
+        .assembly-stage-3d{perspective:1200px;transform-style:preserve-3d;overflow:visible!important;transform:rotateX(7deg) rotateY(-4deg);box-shadow:inset 0 -22px 55px rgba(37,121,155,.05),0 30px 60px rgba(23,49,58,.08)}
+        .assembly-stage-3d:after{content:"";position:absolute;left:9%;right:9%;bottom:-34px;height:70px;border-radius:50%;background:radial-gradient(ellipse,rgba(23,49,58,.16),transparent 68%);filter:blur(13px);transform:rotateX(72deg) translateZ(-55px);pointer-events:none}
+        .assembly-stage-3d .assembly-piece{transform-style:preserve-3d;will-change:transform,opacity,filter;backface-visibility:hidden;transition:none}
+        .assembly-stage-3d .piece-hook{--fx:-82vw;--fy:-32vh;--fz:-520px;--frx:52deg;--fry:-72deg;--frz:-28deg}
+        .assembly-stage-3d .piece-source{--fx:88vw;--fy:-38vh;--fz:-620px;--frx:-38deg;--fry:80deg;--frz:34deg}
+        .assembly-stage-3d .piece-moment{--fx:-74vw;--fy:48vh;--fz:-430px;--frx:-62deg;--fry:-48deg;--frz:42deg}
+        .assembly-stage-3d .piece-edit{--fx:79vw;--fy:44vh;--fz:-560px;--frx:48deg;--fry:62deg;--frz:-38deg}
+        .assembly-stage-3d .piece-final{--fx:0;--fy:0;--fz:-900px;--frx:70deg;--fry:120deg;--frz:-40deg}
+        .assembly-stage-3d .assembly-piece:not(.locked){opacity:0;transform:translate3d(var(--fx),var(--fy),var(--fz)) rotateX(var(--frx)) rotateY(var(--fry)) rotateZ(var(--frz)) scale(.45);filter:blur(7px)}
+        .assembly-stage-3d .assembly-piece.locked{animation:pieceFly3d 1.45s cubic-bezier(.12,.84,.18,1) both, pieceFloat3d 4.8s ease-in-out 1.45s infinite;box-shadow:0 28px 58px rgba(23,49,58,.14),inset 0 1px 0 rgba(255,255,255,.85)}
+        .assembly-stage-3d .piece-final.locked{animation:pieceFly3d 1.6s cubic-bezier(.12,.84,.18,1) both, finalHover3d 4.2s ease-in-out 1.6s infinite;box-shadow:0 0 0 13px rgba(37,121,155,.06),0 38px 75px rgba(37,121,155,.32)}
+        .assembly-stage-3d .piece-hook.locked{animation-delay:0ms,1.45s}.assembly-stage-3d .piece-source.locked{animation-delay:60ms,1.51s}.assembly-stage-3d .piece-moment.locked{animation-delay:80ms,1.53s}.assembly-stage-3d .piece-edit.locked{animation-delay:90ms,1.54s}.assembly-stage-3d .piece-final.locked{animation-delay:100ms,1.7s}
+        .assembly-stage-3d .assembly-orbit{transform-style:preserve-3d;box-shadow:0 0 26px rgba(37,121,155,.05)}
+        .assembly-stage-3d .orbit-one{transform:rotateX(68deg) rotateZ(14deg);animation:orbit3dOne 8s linear infinite}.assembly-stage-3d .orbit-two{transform:rotateY(63deg) rotateZ(-18deg);animation:orbit3dTwo 10s linear infinite}
+        .build-side-3d{transform:translateZ(10px)}
+        .job-pill-3d{transform-style:preserve-3d;animation:queueFlyIn .7s cubic-bezier(.16,1,.3,1) both;box-shadow:0 15px 36px rgba(23,49,58,.07)}
+        .job-pill-3d.building{transform:translateZ(18px);box-shadow:0 22px 46px rgba(37,121,155,.12)}
+        @keyframes labEnter3d{0%{opacity:0;transform:translateZ(-500px) rotateX(11deg) scale(.88)}100%{opacity:1;transform:translateZ(0) rotateX(0) scale(1)}}
+        @keyframes pieceFly3d{0%{opacity:0;transform:translate3d(var(--fx),var(--fy),var(--fz)) rotateX(var(--frx)) rotateY(var(--fry)) rotateZ(var(--frz)) scale(.42);filter:blur(8px)}55%{opacity:1;filter:blur(0);transform:translate3d(0,0,45px) rotateX(-7deg) rotateY(8deg) rotateZ(-2deg) scale(1.08)}76%{transform:translate3d(0,0,-10px) rotateX(3deg) rotateY(-3deg) rotateZ(1deg) scale(.98)}100%{opacity:1;filter:none;transform:translate3d(0,0,12px) rotateX(0) rotateY(0) rotateZ(0) scale(1)}}
+        @keyframes pieceFloat3d{0%,100%{transform:translate3d(0,0,12px) rotateX(0) rotateY(0)}50%{transform:translate3d(0,-7px,27px) rotateX(3deg) rotateY(-3deg)}}
+        @keyframes finalHover3d{0%,100%{transform:translate3d(0,0,28px) rotateY(-4deg)}50%{transform:translate3d(0,-10px,52px) rotateY(5deg) rotateX(3deg)}}
+        @keyframes queueFlyIn{0%{opacity:0;transform:translate3d(45vw,20px,-240px) rotateY(-28deg) scale(.82)}100%{opacity:1;transform:translate3d(0,0,0) rotateY(0) scale(1)}}
+        @keyframes orbit3dOne{to{transform:rotateX(68deg) rotateZ(374deg)}}@keyframes orbit3dTwo{to{transform:rotateY(63deg) rotateZ(-378deg)}}
+        @media(max-width:768px){.assembly-stage-3d{transform:rotateX(4deg) rotateY(-2deg)}.assembly-stage-3d .piece-hook{--fx:-105vw}.assembly-stage-3d .piece-source{--fx:105vw}.assembly-stage-3d .piece-moment{--fx:-105vw}.assembly-stage-3d .piece-edit{--fx:105vw}}
+        @media(prefers-reduced-motion:reduce){.assembly-stage-3d .assembly-piece.locked,.job-pill-3d,.build-lab-3d{animation:none!important;transform:none!important;opacity:1!important;filter:none!important}}
+      `}</style>
     </div>,document.body):null;
 
   return <><div className="space-y-7">
