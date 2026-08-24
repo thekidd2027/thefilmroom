@@ -1,131 +1,53 @@
-export type ScoringWeights = {
-  popularity: number;
-  currentRelevance: number;
-  wowFactor: number;
-  storyValue: number;
-  brandFit: number;
-  verticalViability: number;
-};
-export type SeasonalWeight = { sport: string; months: number[]; baseWeight: number };
-export type MediaSourcingRule = { allowedSourceTypes: string[]; cautionSourceTypes: string[]; bannedSourceTypes: string[]; rationale: string };
-export type MusicPolicy = { soundPalette: string[]; usageRule: string; rationale: string };
-export type PenaltyRule = { key: string; description: string; penalty: number };
-export type BrandVoice = { principles: string[]; bannedPhrases: string[]; captionStyle: string; coverStyle: string };
-export type EditorialRules = {
-  coreSports: string[];
-  currentVsFlashback: string;
-  generalHypeFanRule: string;
-  rivalryException: string;
-  replacementRule: string;
-  sourceRule: string;
-  cameraAngleRule: string;
-  reelLengthRule: string;
-  templates: { name: string; job: string }[];
-};
-export type BrandBrain = {
-  scoringWeights: ScoringWeights;
-  seasonalCalendar: SeasonalWeight[];
-  mediaSourcing: MediaSourcingRule;
-  musicPolicy: MusicPolicy;
-  penalties: PenaltyRule[];
-  voice: BrandVoice;
-  editorialRules: EditorialRules;
-  slateSize: number;
-};
+export type ScoringWeights = { popularity:number; currentRelevance:number; wowFactor:number; storyValue:number; brandFit:number; verticalViability:number };
+export type SeasonalWeight = { sport:string; months:number[]; baseWeight:number };
+export type MediaSourcingRule = { allowedSourceTypes:string[]; cautionSourceTypes:string[]; bannedSourceTypes:string[]; rationale:string };
+export type MusicPolicy = { soundPalette:string[]; usageRule:string; rationale:string };
+export type PenaltyRule = { key:string; description:string; penalty:number };
+export type BrandVoice = { principles:string[]; bannedPhrases:string[]; captionStyle:string; coverStyle:string };
+export type EditorialRules = { coreSports:string[]; currentVsFlashback:string; generalHypeFanRule:string; rivalryException:string; replacementRule:string; sourceRule:string; cameraAngleRule:string; reelLengthRule:string; templates:{name:string;job:string}[] };
+export type BrandBrain = { scoringWeights:ScoringWeights; seasonalCalendar:SeasonalWeight[]; mediaSourcing:MediaSourcingRule; musicPolicy:MusicPolicy; penalties:PenaltyRule[]; voice:BrandVoice; editorialRules:EditorialRules; slateSize:number };
 
 export const DEFAULT_BRAND_BRAIN: BrandBrain = {
-  slateSize: 3,
-  scoringWeights: {
-    popularity: 0.30,
-    currentRelevance: 0.24,
-    wowFactor: 0.20,
-    storyValue: 0.11,
-    brandFit: 0.10,
-    verticalViability: 0.05,
-  },
-  seasonalCalendar: [
-    { sport: "football", months: [8, 9, 10, 11, 12, 1], baseWeight: 1.45 },
-    { sport: "basketball", months: [11, 12, 1, 2, 3, 4], baseWeight: 1.0 },
-  ],
-  mediaSourcing: {
-    allowedSourceTypes: [
-      "original footage",
-      "creator/fan footage with explicit permission",
-      "licensed footage",
-      "school/team/player footage where reuse permission is actually granted",
-      "platform remix/reuse where the platform and rightsholder explicitly allow it",
-    ],
-    cautionSourceTypes: [
-      "ESPN/Fox/CBS/ABC/NCAA/conference broadcast footage",
-      "official highlights that are publicly viewable but not explicitly licensed for reposting",
-      "third-party highlight compilations",
-    ],
-    bannedSourceTypes: [
-      "private/paywalled footage acquired by bypassing access controls",
-      "stolen or leaked footage",
-    ],
-    rationale:
-      "Publicly viewable does not mean licensed for reposting. The portal may surface caution sources for editorial research, but must label rights risk and never claim a clip is lawful merely because it is on YouTube.",
-  },
-  musicPolicy: {
-    soundPalette: [
-      "warm vintage soul in the Can I Call You Rose? universe",
-      "Fleetwood Mac / classic-rock nostalgia",
-      "Remember the Titans-style cinematic sports score",
-      "Americana and old-record energy",
-      "occasional tasteful country: Turnpike Troubadours, George Strait, Tyler Childers, Flatland Cavalry-type energy",
-      "Spirit in the Sky-style vintage energy",
-    ],
-    usageRule:
-      "Always suggest exactly 3 songs, ranked. Commercial tracks are suggestions for use through Instagram/YouTube's licensed in-app music library where available; do not tell editors to bake an unlicensed commercial master into the exported video.",
-    rationale:
-      "Music is a signature part of the brand. It should feel soulful, analog, nostalgic and human—not generic TikTok hype music.",
-  },
-  penalties: [
-    { key: "fan_conflict", description: "In a general hype/highlight reel, a team is celebrated and then made the victim later without conflict being the story.", penalty: 1.8 },
-    { key: "overused_clip", description: "Same moment or player angle has run recently.", penalty: 1.8 },
-    { key: "stale_recency", description: "Old story has no current hook or evergreen purpose.", penalty: 1.0 },
-    { key: "weak_story", description: "Great play but no role in the reel's emotional arc.", penalty: 1.2 },
-    { key: "atmosphere_only", description: "Pitch is mainly crowd noise, marching band, stadium ambience, entrances, uniforms, signs, tailgates, or generic tradition footage without elite football/basketball action driving the reel.", penalty: 4.0 },
-    { key: "low_recognition", description: "Pitch centers on obscure players, teams or moments when a more recognizable and shareable subject is available.", penalty: 2.0 },
-  ],
-  voice: {
-    principles: [
-      "This is a men's college football and men's college basketball media brand, not a faceless content farm.",
-      "Make today's college sports feel historic and historic college sports feel alive again.",
-      "The product is GREAT SPORTS CONTENT first: explosive highlights, iconic players, rivalry moments, legendary performances, comebacks, heartbreak, clutch plays and recognizable stories.",
-      "Sound like someone with taste who loves the sport, not ESPN-lite and not an AI narrator.",
-      "The footage, commentator audio and music do most of the storytelling.",
-      "Use minimal on-screen words; every word must earn its place.",
-      "Relevance isn't always recency. Cultural memory can beat a same-day mediocre play.",
-      "Optimize for shares and follows, not just views.",
-      "Atmosphere is seasoning, not the meal. Crowd, band, entrance or stadium shots can support a highlight story for a few seconds but should almost never BE the story.",
-    ],
-    bannedPhrases: ["You won't believe", "Here are today's top", "craziest ever!!!", "follow for more"],
-    captionStyle: "Short, confident, human. Usually one sentence or fragment. No engagement bait.",
-    coverStyle: "One strong action frame, player close-up or emotionally loaded sports frame; subtle title if needed; consistent film/editorial treatment. No collage.",
-  },
-  editorialRules: {
-    coreSports: ["men's college football", "men's college basketball"],
-    currentVsFlashback:
-      "Use current moments as the discovery engine and flashbacks as the emotional engine. During football season, make the slate heavily football-first (normally 4 of 5 pitches) unless a men's college basketball story is genuinely bigger. Connect past to present whenever natural.",
-    generalHypeFanRule:
-      "For general hype/highlight reels, protect fan-allegiance continuity: avoid celebrating a fanbase and then showing that same fanbase getting embarrassed in the same reel.",
-    rivalryException:
-      "For rivalry, matchup, 'last time they played', historical conflict or debate reels, opposing fan pain is allowed because the conflict itself is the story.",
-    replacementRule:
-      "Every recipe must include exactly 3 pre-vetted replacement clips. Each replacement must name which primary clip(s) it can replace and preserve the same story function, pacing and fan-allegiance logic.",
-    sourceRule:
-      "Every source clip gets a raw source URL plus a clickable direct URL that opens at the exact timestamp. Never invent a timestamp. If transcript/visual inspection cannot ground it, flag it as unverified instead of guessing. Prefer at least 2 distinct source videos per reel and preserve multiple useful clip choices for the editor.",
-    cameraAngleRule:
-      "Search for alternate sources/angles of important moments. Prefer a package with setup, primary action, replay/tight angle and player/coach reaction when it improves the story. Multiple distinct clips and angles are strongly preferred. Do not use redundant angles just to look edited.",
-    reelLengthRule:
-      "Default to the shortest runtime that earns the payoff. Typical range 12-35 seconds. Longer is allowed only when a true player/team/rivalry story earns it.",
-    templates: [
-      { name: "MOMENT", job: "Reach: one elite current or iconic PLAY/PERFORMANCE with setup and payoff. Action must drive it." },
-      { name: "FEELING", job: "Shares/brand: sports emotion built around actual highlights—heartbreak, comeback, dominance, rivalry, nostalgia. Atmosphere may support but never dominate." },
-      { name: "STORY", job: "Follows/retention: a player, team, game or rivalry mini-narrative. Interviews/documentary audio may cold-open before strong highlight clips." },
-      { name: "TAKE", job: "Comments/community: a defensible men's college football/basketball statement backed primarily by game footage." },
-    ],
-  },
+ slateSize:5,
+ scoringWeights:{popularity:.30,currentRelevance:.20,wowFactor:.25,storyValue:.05,brandFit:.15,verticalViability:.05},
+ seasonalCalendar:[{sport:"football",months:[8,9,10,11,12,1],baseWeight:1.6},{sport:"basketball",months:[11,12,1,2,3,4],baseWeight:1.25}],
+ mediaSourcing:{allowedSourceTypes:["licensed footage","original footage","permissioned creator/fan footage","platform reuse explicitly allowed by rightsholder"],cautionSourceTypes:["broadcast footage","official public highlights without explicit repost license","third-party compilations"],bannedSourceTypes:["private/paywalled footage obtained by bypassing access controls","stolen or leaked footage"],rationale:"Surface strong editorial sources while clearly preserving rights-risk labels. Publicly viewable does not itself grant repost rights."},
+ musicPolicy:{soundPalette:["warm vintage soul","Fleetwood Mac / classic-rock nostalgia","Remember the Titans-style cinematic sports score","Americana and old-record energy","tasteful country such as Turnpike Troubadours, George Strait, Tyler Childers or Flatland Cavalry-type energy","Spirit in the Sky-style vintage energy"],usageRule:"Suggest exactly 3 ranked songs. Music supports, never replaces, the energy of original announcer calls. Commercial music should be added through licensed in-app libraries where available.",rationale:"Film Room should feel nostalgic, soulful, cinematic and human rather than like generic hype content."},
+ penalties:[
+  {key:"wrong_sport",description:"Anything other than men's college football or men's college basketball, including all women's sports, NFL and NBA.",penalty:10},
+  {key:"caption_mismatch",description:"Any primary highlight falls outside the exact player, team, game, season, career, rivalry, comeback or claim promised by the caption.",penalty:10},
+  {key:"no_announcer",description:"A primary highlight lacks original broadcast/announcer commentary. Non-broadcast footage may only be supporting material.",penalty:5},
+  {key:"atmosphere_only",description:"Crowd, band, entrance, stadium, tailgate or tradition footage is the subject instead of supporting actual highlights.",penalty:6},
+  {key:"mediocre_highlights",description:"Concept uses merely available clips instead of the genuinely best fitting highlights.",penalty:4},
+  {key:"weak_footage",description:"Not enough strong searchable footage or source diversity to build the promised reel.",penalty:3},
+  {key:"forced_variety",description:"A weaker idea is included only to diversify sports/categories.",penalty:3},
+  {key:"overused_clip",description:"Same moment or angle has run recently without a compelling new reason.",penalty:2}
+ ],
+ voice:{principles:[
+  "Film Room covers ONLY men's college football and men's college basketball.",
+  "Highlights are the foundation. The actual sports footage must be great enough to earn the reel.",
+  "The caption is a contract: every primary clip must exactly satisfy its scope and claim.",
+  "Find the BEST highlights, not merely usable highlights.",
+  "Original announcer calls are part of the Film Room identity.",
+  "Atmosphere and alternate angles are seasoning; broadcast highlights are the meal.",
+  "Optimize for shares, follows, rewatchability and long-term brand taste rather than filling slots.",
+  "Current content gets priority only when it is actually strong; evergreen greatness can beat mediocre news.",
+  "Do not force category diversity. Protect quality and taste above quotas."
+ ],bannedPhrases:["You won't believe","Here are today's top","craziest ever!!!","follow for more"],captionStyle:"Short, confident and specific. The caption defines the footage scope and must never promise something the edit does not deliver.",coverStyle:"One strong action frame or emotionally loaded sports frame; subtle title if needed; no collage."},
+ editorialRules:{
+  coreSports:["men's college football","men's college basketball"],
+  currentVsFlashback:"Dynamically favor whichever of men's college football or men's college basketball has the strongest current cultural attention. During football season, football can occupy all five pitches if it has the best ideas. During March Madness/basketball peaks, basketball may dominate. Never force a quota and never use women's sports.",
+  generalHypeFanRule:"Every reel stays on one coherent subject promised by its caption. For general team/player highlights preserve a clear emotional point of view.",
+  rivalryException:"Rivalry or matchup reels may celebrate huge plays from both sides because the rivalry/game itself is the subject, but every clip must remain within that matchup premise.",
+  replacementRule:"Provide exactly 3 pre-vetted replacement clips that preserve the caption scope and can replace named primary clips without weakening the reel.",
+  sourceRule:"Primary highlights MUST have original broadcast/announcer commentary. Supporting footage such as fan angles, field-level views, crowd reactions, celebrations, tunnels and alternate replays may lack announcers. Target at least 2 distinct source videos and search beyond the first compilation. Never invent timestamps. Rank a larger candidate pool before choosing final highlights.",
+  cameraAngleRule:"For major plays provide a primary broadcast angle with announcer audio plus a useful alternate angle when available. Alternate angles are optional editorial tools, not mandatory duplicate clips. Fan/field-level angles are supporting footage unless they contain the required broadcast commentary.",
+  reelLengthRule:"Use the shortest runtime that fully delivers the concept. Single insane moments may be 8-15 seconds; most reels 15-30 seconds; longer only when the content earns it.",
+  templates:[
+   {name:"PLAYER_SPOTLIGHT",job:"NO INTERVIEW. One male college player. Caption + genuinely best broadcast highlights with announcers from exactly one game, one season, or the player's college career as promised by the caption. If the caption makes a trait claim, every highlight must prove that trait."},
+   {name:"TEAM_SCHOOL_SPOTLIGHT",job:"NO INTERVIEW. One men's college team/program. Caption + genuinely best broadcast highlights with announcers from the exact game, season, historic comeback/game, or era promised. Crowd/stadium/fan footage may briefly introduce or support the reel but cannot become the reel."},
+   {name:"MOMENT_GAME",job:"NO INTERVIEW. One rivalry/matchup, one recent game, or one insane play. Stay on that exact topic for the entire reel. A single extraordinary play may use setup, broadcast call, replay, alternate angle and reaction rather than padding with unrelated highlights."},
+   {name:"STORY",job:"ALWAYS begins with a verified real interview from a male college player or coach. Then transition into broadcast highlights with announcers that directly visualize and support exactly what the interview says. Player interview -> that player's relevant highlights. Coach interview -> that team's relevant highlights. Never invent/paraphrase a quote or use unrelated highlights."}
+  ]
+ }
 };
