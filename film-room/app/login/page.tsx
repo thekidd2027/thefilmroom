@@ -1,11 +1,9 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState("");
@@ -18,7 +16,7 @@ export default function LoginPage() {
     setMsg("");
 
     const supabase = supabaseBrowser();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       setMsg(error.message === "Invalid login credentials"
@@ -28,8 +26,15 @@ export default function LoginPage() {
       return;
     }
 
-    router.replace("/today");
-    router.refresh();
+    if (!data.session) {
+      setMsg("Signed in, but the session was not created. Please try once more.");
+      setBusy(false);
+      return;
+    }
+
+    // Use a full navigation after the auth cookies have been written so the
+    // server middleware sees the same session immediately and on later reloads.
+    window.location.assign("/today");
   }
 
   async function forgotPassword() {
