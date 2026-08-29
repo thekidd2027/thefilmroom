@@ -211,7 +211,7 @@ export async function scoreVideoCandidates(
   }));
 
   const text = await claude(
-    `${brainPrompt(brandBrain)}\nStory: ${JSON.stringify(story)}\nScore each source candidate for usefulness in telling THIS story. "rightsRisk" must be clear/caution/blocked, with public broadcast/highlight footage usually caution unless explicit reuse permission is evident. Return ONLY JSON {"candidates":[...]}. Candidate order must match input order. Fields: headline,sport,summary,wowFactor,storyValue,brandFit,verticalViability,rightsRisk,rightsReason.\n${JSON.stringify(payload)}`,
+    `${brainPrompt(brandBrain)}\nStory: ${JSON.stringify(story)}\nScore each source candidate for usefulness in telling THIS EXACT story. CAPTION SCOPE IS A HARD GATE: a source about the wrong game, wrong season, wrong team/player, or only loosely related should score very low or be blocked. Prefer original/official broadcast uploads, conference/team/NCAA sources, or full highlight packages with announcer audio. A YouTube Short, Reel-style edit, fan montage, mixtape, TikTok repost, creator compilation, or derivative social edit should be BLOCKED as a primary source even when popular. "rightsRisk" must be clear/caution/blocked; ordinary broadcast/highlight footage is usually caution unless explicit reuse permission is evident. Return ONLY JSON {"candidates":[...]}. Candidate order must match input order. Fields: headline,sport,summary,wowFactor,storyValue,brandFit,verticalViability,rightsRisk,rightsReason.\n${JSON.stringify(payload)}`,
     { model: MODEL, maxTokens: 4500 }
   );
 
@@ -256,7 +256,7 @@ export async function buildGroundedRecipe(
   const text = await claude(
     `${brainPrompt(brandBrain)}
 Build the final editor-ready recipe for this story: ${JSON.stringify(story)}
-Ground every clip timestamp in the transcript and/or visual inspection provided. Do not invent. Prefer multiple camera angles/sources when they materially improve the story. For a general hype/feeling reel enforce fan-allegiance continuity. For rivalry/matchup reels conflict is allowed.
+Ground every clip timestamp in the transcript and/or visual inspection provided. Do not invent. THE CAPTION IS A CONTRACT: every primary clip must prove the exact player/team/game/season/career/rivalry/moment promised by the story. Never use a cooler clip from outside that scope. PRIMARY HIGHLIGHTS must come from broadcast/official highlight footage with original announcer commentary whenever the source provides audio. Supporting crowd/fan/field-level/alternate-angle footage may lack announcer audio, but supporting footage must never replace the broadcast-highlight foundation. Do not use YouTube Shorts, Reel-style edits, fan montages, mixtapes, TikTok reposts, or creator-made derivative compilations as primary footage. Prefer multiple legitimate source videos and alternate angles when they materially improve the story. For rivalry/matchup reels conflict is allowed.
 
 Choose 4-7 PRIMARY clips in exact story order and EXACTLY 3 replacements. Replacements must name primary order numbers they can replace. Each primary should usually be 1-5 seconds in the final reel, even if the source window is longer. Give CapCut 9:16 keyframe instructions as x/y percentages and scale percentage, only when useful.
 
