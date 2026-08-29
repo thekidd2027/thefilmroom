@@ -155,9 +155,18 @@ export async function getSportsUpdateContext(): Promise<SportsUpdateContext> {
   const news = [...parseNews(cfbNews, "football"), ...parseNews(cbbNews, "basketball")]
     .sort((a, b) => Date.parse(b.published || "0") - Date.parse(a.published || "0"))
     .slice(0, 18);
-  const scores = [...parseScores(cfbScores, "football"), ...parseScores(cbbScores, "basketball")]
+  const allGames = [...parseScores(cfbScores, "football"), ...parseScores(cbbScores, "basketball")];
+  const isStarted = (g: SportsScore) => /final|in progress|quarter|half|ot|end/i.test(g.status);
+  const scores = allGames
+    .filter(isStarted)
     .sort((a, b) => Date.parse(b.date || "0") - Date.parse(a.date || "0"))
     .slice(0, 24);
+  const upcoming = allGames
+    .filter((g) => {
+      const gameDate = new Date(g.date);
+      return !Number.isNaN(gameDate.getTime()) && compactDate(gameDate) === today && !isStarted(g);
+    })
+    .sort((a, b) => Date.parse(a.date || "0") - Date.parse(b.date || "0"));
 
   return {
     generatedAt: now.toISOString(),
