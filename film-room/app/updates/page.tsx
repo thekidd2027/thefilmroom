@@ -1,4 +1,4 @@
-import { getSportsUpdateContext } from "@/lib/sportsUpdates";
+import { getSportsUpdateContext } from "@/lib/sportsUpdates";\nimport RefreshSportsButton from "./RefreshSportsButton";
 
 export const dynamic = "force-dynamic";
 
