@@ -15,7 +15,55 @@ function storyNeedsTranscript(story: any) {
   const opening = String(story?.openingConcept ?? story?.opening_concept ?? "").toLowerCase();
   const summary = String(story?.summary ?? "").toLowerCase();
   const text = `${opening} ${summary}`;
-  return template === "INTERVIEW_STORY" || /interview|documentary|podcast|quote|soundbite|press conference|player says|coach says/.test(text);
+  return template === "STORY" || /interview|documentary|podcast|quote|soundbite|press conference|player says|coach says/.test(text);
+}
+
+function looksLikeDerivativeSocialEdit(item: any, stats?: any) {
+  const text = `${item?.title ?? ""} ${item?.description ?? ""}`.toLowerCase();
+  if (/#shorts?\\b|\\bshorts?\\b|\\breel\\b|\\btiktok\\b|\\bfan edit\\b|\\bedit audio\\b|\\bamv\\b|\\bcompilation\\b|\\bmixtape\\b/.test(text)) return true;
+  const channel = String(item?.channelTitle ?? "").toLowerCase();
+  const officialish = /espn|sports|network|ncaa|conference|athletics|football|basketball|university|college|sec|acc|big ten|big 12|pac-12/.test(channel);
+  if (!officialish && stats && Number(stats.durationSeconds) > 0 && Number(stats.durationSeconds) <= 70 && /highlight|best plays|top plays|edit/.test(text)) return true;
+  return false;
+}
+
+function sourceAuthority(item: any) {
+  const channel = String(item?.channelTitle ?? "").toLowerCase();
+  if (/espn|abc|cbs sports|fox sports|nbc sports|big ten network|sec network|acc digital network|ncaa|march madness/.test(channel)) return 3;
+  if (/athletics|university|college|football|basketball|conference|big 12|pac-12/.test(channel)) return 2;
+  return 0;
+}
+
+function storyMatch(item: any, story: any) {
+  const hay = `${item?.title ?? ""} ${item?.description ?? ""}`.toLowerCase();
+  const entities = [
+    ...(Array.isArray(story?.players) ? story.players : []),
+    ...(Array.isArray(story?.teams) ? story.teams : []),
+    String(story?.year ?? ""),
+  ].map((x:any)=>String(x).trim().toLowerCase()).filter((x:string)=>x && x !== "—");
+  let score = 0;
+  for (const e of entities) if (hay.includes(e)) score += 2;
+  const headlineWords = String(story?.headline ?? "").toLowerCase().split(/[^a-z0-9]+/).filter((w:string)=>w.length >= 5);
+  for (const w of headlineWords) if (hay.includes(w)) score += 0.35;
+  return score;
+}
+
+function scopedQueries(story: any, transcriptRequired: boolean) {
+  const player = Array.isArray(story?.players) ? story.players[0] : "";
+  const team = Array.isArray(story?.teams) ? story.teams[0] : "";
+  const year = String(story?.year ?? "").replace("—", "").trim();
+  const base = [player, team, year].filter(Boolean).join(" ");
+  if (transcriptRequired) return [
+    `${story.headline} interview`,
+    `${player || team} ${year} interview press conference`,
+    `${story.headline} documentary interview`,
+  ];
+  return [
+    `${story.headline} broadcast highlights`,
+    `${base} full game highlights broadcast`,
+    `${base} ESPN highlights announcer`,
+    `${story.headline} alternate angle broadcast`,
+  ];
 }
 
 export async function POST(req: NextRequest) {
@@ -62,15 +110,18 @@ export async function POST(req: NextRequest) {
     const { data:recentReels } = await db.from("reels").select("headline").gte("slate_date",new Date(Date.now()-14*86400000).toISOString().slice(0,10));
     const recentHeadlines = (recentReels ?? []).map((x:any)=>x.headline);
 
-    const fallbackQueries = [story.headline, `${story.headline} highlights`, `${story.headline} interview documentary`];
-    const queries = Array.from(new Set([...(story.searchQueries ?? []), ...fallbackQueries].filter(Boolean))).slice(0,4);
+    const fallbackQueries = scopedQueries(story, transcriptRequired);
+    const queries = Array.from(new Set([...fallbackQueries, ...(story.searchQueries ?? [])].filter(Boolean))).slice(0,5);
     const nested = await Promise.all(queries.map((q:string)=>searchRecentVideos(q,{maxResults:8}).catch((e)=>{ console.warn("YouTube query failed",q,e); return []; })));
-    const uniq = [...new Map(nested.flat().map((x:any)=>[x.videoId,x])).values()].slice(0,20) as any[];
-    if (uniq.length < 2) return NextResponse.json({ error:"I couldn't find at least two usable YouTube sources for this pitch. Try another pitch or generate another angle." }, { status:422 });
+    const raw = [...new Map(nested.flat().map((x:any)=>[x.videoId,x])).values()].slice(0,30) as any[];
+    if (raw.length < 2) return NextResponse.json({ error:"I couldn't find at least two usable YouTube sources for this pitch. Try another pitch or generate another angle." }, { status:422 });
 
-    const stats = await getVideoStats(uniq.map((x:any)=>x.videoId));
+    const stats = await getVideoStats(raw.map((x:any)=>x.videoId));
     const statsMap = new Map(stats.map((x:any)=>[x.videoId,x]));
-    const items = uniq.filter((x:any)=>statsMap.has(x.videoId)).map((search:any)=>({search,stats:statsMap.get(search.videoId)!}));
+    const filtered = raw.filter((search:any)=>{ const st=statsMap.get(search.videoId); return st && !looksLikeDerivativeSocialEdit(search,st); });
+    const items = filtered
+      .map((search:any)=>({search,stats:statsMap.get(search.videoId)!}))
+      .sort((a:any,b:any)=> (sourceAuthority(b.search)+storyMatch(b.search,story))-(sourceAuthority(a.search)+storyMatch(a.search,story)));
     if (items.length < 2) return NextResponse.json({ error:"YouTube found videos, but fewer than two had readable metadata." }, { status:422 });
 
     let qualitative:any[] = [];
@@ -78,7 +129,9 @@ export async function POST(req: NextRequest) {
     const ranked = items.map((item:any,i:number)=>{
       const q = qualitative[i] ?? { headline:story.headline,sport:story.sport,summary:story.summary,wowFactor:7,storyValue:8,brandFit:8,verticalViability:7,rightsRisk:"caution" as const,rightsReason:"Public source footage; verify platform reuse rights." };
       const result = scoreCandidate(brain,q,item.stats,item.search.publishedAt,recentHeadlines);
-      return {...item,score:result.total,rightsReason:q.rightsReason,blocked:result.blocked};
+      const authorityBoost=sourceAuthority(item.search)*0.45;
+      const relevanceBoost=Math.min(1.5,storyMatch(item.search,story)*0.18);
+      return {...item,score:result.total+authorityBoost+relevanceBoost,rightsReason:q.rightsReason,blocked:result.blocked};
     }).filter((x:any)=>!x.blocked).sort((a:any,b:any)=>b.score-a.score);
     if (ranked.length < 2) return NextResponse.json({ error:"Sources were found, but fewer than two passed the Film Room sourcing rules." }, { status:422 });
 
@@ -162,7 +215,7 @@ export async function POST(req: NextRequest) {
       view_count:src.stats.viewCount,
       published_at:src.search.publishedAt,
       score:src.score,
-      score_breakdown:{source_score:src.score,trend_evidence:story.popularityEvidence,grounding_mode:transcriptRequired?"dialogue":"visual_or_atmosphere"},
+      score_breakdown:{source_score:src.score,trend_evidence:story.popularityEvidence,grounding_mode:transcriptRequired?"dialogue":"broadcast_highlight",source_authority:sourceAuthority(src.search),derivative_social_edit:false},
       selected:false,
       rejection_reason:null,
     }));
