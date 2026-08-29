@@ -8,12 +8,16 @@ type Pitch={id:string;headline:string;sport:string;summary:string|null;score:num
 type Job={id:string;headline:string;slot:number;status:"queued"|"building"|"ready"|"failed";message?:string};
 
 const categories:any={
+ PLAYER_SPOTLIGHT:{icon:"◎",label:"PLAYER SPOTLIGHT"},
+ TEAM_SCHOOL_SPOTLIGHT:{icon:"◈",label:"SCHOOL SPOTLIGHT"},
+ MOMENT_GAME:{icon:"▶",label:"MOMENT / GAME"},
+ STORY:{icon:"◉",label:"STORY / TESTIMONY"},
+ TIMELESS_HIGHLIGHT:{icon:"∞",label:"TIMELESS HIGHLIGHT"},
  PLAYER_HIGHLIGHT:{icon:"◎",label:"PLAYER SPOTLIGHT"},
  TEAM_HIGHLIGHT:{icon:"◈",label:"SCHOOL SPOTLIGHT"},
  RIVALRY:{icon:"⚡",label:"RIVALRY HIGHLIGHTS"},
  MOMENT:{icon:"▶",label:"ICONIC HIGHLIGHT"},
- INTERVIEW_STORY:{icon:"◉",label:"STORY / TESTIMONY"},
- STORY:{icon:"◉",label:"STORY / TESTIMONY"}
+ INTERVIEW_STORY:{icon:"◉",label:"STORY / TESTIMONY"}
 };
 const phases=["SCANNING SOURCES","RANKING MOMENTS","GROUNDING CLIPS","BUILDING THE EDIT","LOCKING THE RECIPE"];
 function meta(p:Pitch){return p.score_breakdown??{};}
