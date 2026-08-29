@@ -174,7 +174,7 @@ export function sportsContextForPrompt(ctx: SportsUpdateContext) {
   const scores = ctx.scores.slice(0, 10).map((g) =>
     `[${g.sport}] ${g.status}: ${g.awayTeam} ${g.awayScore} at ${g.homeTeam} ${g.homeScore}${g.leaders[0] ? ` | ${g.leaders[0]}` : ""}`
   ).join("\n");
-  const alerts = ctx.reelAlerts.slice(0, 8).map((a) =>
+  const upcoming = ctx.upcoming.slice(0, 12).map((g) =>\n    `[${g.sport}] UPCOMING TODAY: ${g.awayTeam} at ${g.homeTeam} — ${g.status}`\n  ).join("\\n");\n  const alerts = ctx.reelAlerts.slice(0, 8).map((a) =>
     `[${a.urgency}] [${a.sport}] ${a.title} — ${a.reason}`
   ).join("\n");
 
