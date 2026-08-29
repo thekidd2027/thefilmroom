@@ -32,7 +32,10 @@ export const DEFAULT_BRAND_BRAIN: BrandBrain = {
   "Atmosphere and alternate angles are seasoning; broadcast highlights are the meal.",
   "Optimize for shares, follows, rewatchability and long-term brand taste rather than filling slots.",
   "Current content gets priority only when it is actually strong; evergreen greatness can beat mediocre news.",
-  "Do not force category diversity. Protect quality and taste above quotas."
+  "Do not force category diversity. Protect quality and taste above quotas.",
+  "Sports Update watches possibilities; Today's Dose only recommends reel concepts that are already real and postable.",
+  "A live or upcoming game is never a reel concept by itself. Wait for a verified play, performance, comeback, upset, record, or other actual event.",
+  "Keep an evergreen bench of timeless college football and basketball highlights that can be posted whenever current games have not earned the slot."
  ],bannedPhrases:["You won't believe","Here are today's top","craziest ever!!!","follow for more"],captionStyle:"Short, confident and specific. The caption defines the footage scope and must never promise something the edit does not deliver.",coverStyle:"One strong action frame or emotionally loaded sports frame; subtle title if needed; no collage."},
  editorialRules:{
   coreSports:["men's college football","men's college basketball"],
@@ -40,14 +43,15 @@ export const DEFAULT_BRAND_BRAIN: BrandBrain = {
   generalHypeFanRule:"Every reel stays on one coherent subject promised by its caption. For general team/player highlights preserve a clear emotional point of view.",
   rivalryException:"Rivalry or matchup reels may celebrate huge plays from both sides because the rivalry/game itself is the subject, but every clip must remain within that matchup premise.",
   replacementRule:"Provide exactly 3 pre-vetted replacement clips that preserve the caption scope and can replace named primary clips without weakening the reel.",
-  sourceRule:"Primary highlights MUST have original broadcast/announcer commentary. Supporting footage such as fan angles, field-level views, crowd reactions, celebrations, tunnels and alternate replays may lack announcers. Target at least 2 distinct source videos and search beyond the first compilation. Never invent timestamps. Rank a larger candidate pool before choosing final highlights.",
+  sourceRule:"Primary highlights MUST have original broadcast/announcer commentary. Prefer one excellent long-form broadcast or official highlight video that can carry the entire 18–24 second reel with grounded timestamps. Supporting footage is optional, not required. Never use Shorts, Reel-style edits, TikTok reposts, fan montages or creator compilations as the primary source. Never invent timestamps.",
   cameraAngleRule:"For major plays provide a primary broadcast angle with announcer audio plus a useful alternate angle when available. Alternate angles are optional editorial tools, not mandatory duplicate clips. Fan/field-level angles are supporting footage unless they contain the required broadcast commentary.",
   reelLengthRule:"Use the shortest runtime that fully delivers the concept. Single insane moments may be 8-15 seconds; most reels 15-30 seconds; longer only when the content earns it.",
   templates:[
    {name:"PLAYER_SPOTLIGHT",job:"NO INTERVIEW. One male college player. Caption + genuinely best broadcast highlights with announcers from exactly one game, one season, or the player's college career as promised by the caption. If the caption makes a trait claim, every highlight must prove that trait."},
    {name:"TEAM_SCHOOL_SPOTLIGHT",job:"NO INTERVIEW. One men's college team/program. Caption + genuinely best broadcast highlights with announcers from the exact game, season, historic comeback/game, or era promised. Crowd/stadium/fan footage may briefly introduce or support the reel but cannot become the reel."},
    {name:"MOMENT_GAME",job:"NO INTERVIEW. One rivalry/matchup, one recent game, or one insane play. Stay on that exact topic for the entire reel. A single extraordinary play may use setup, broadcast call, replay, alternate angle and reaction rather than padding with unrelated highlights."},
-   {name:"STORY",job:"ALWAYS begins with a verified real interview from a male college player or coach. Then transition into broadcast highlights with announcers that directly visualize and support exactly what the interview says. Player interview -> that player's relevant highlights. Coach interview -> that team's relevant highlights. Never invent/paraphrase a quote or use unrelated highlights."}
+   {name:"STORY",job:"ALWAYS begins with a verified real interview from a male college player or coach. Then transition into broadcast highlights with announcers that directly visualize and support exactly what the interview says. Player interview -> that player's relevant highlights. Coach interview -> that team's relevant highlights. Never invent/paraphrase a quote or use unrelated highlights."},
+   {name:"TIMELESS_HIGHLIGHT",job:"EVERGREEN. No interview. A legendary or simply irresistible men's college football/basketball highlight, sequence, comeback, rivalry ending, player takeover or classic moment that does not depend on today's news cycle. It should still be worth posting months from now. Prefer one coherent broadcast source with announcer audio and a satisfying setup/payoff."}
   ]
  }
 };
