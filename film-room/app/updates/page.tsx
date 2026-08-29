@@ -52,6 +52,19 @@ export default async function UpdatesPage() {
         </div>
       </div>
 
+      <div className="rounded-[1.4rem] border border-rule bg-white/65 p-4">
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-full bg-sinbad/25 px-3 py-1 font-mono text-[10px] tracking-[.12em]">SCHEDULE {data.health.schedules.toUpperCase()}</span>
+          <span className="rounded-full bg-sinbad/25 px-3 py-1 font-mono text-[10px] tracking-[.12em]">SCORES {data.health.scores.toUpperCase()}</span>
+          <span className="rounded-full bg-sinbad/25 px-3 py-1 font-mono text-[10px] tracking-[.12em]">NEWS {data.health.news.toUpperCase()}</span>
+        </div>
+        {data.health.notes.length > 0 && (
+          <div className="mt-3 text-xs text-dim leading-5">
+            {data.health.notes.map((note, i) => <div key={i}>• {note}</div>)}
+          </div>
+        )}
+      </div>
+
       <section>
         <div className="flex items-end justify-between gap-4 mb-3">
           <div>
@@ -73,9 +86,12 @@ export default async function UpdatesPage() {
               >
                 <div className="flex items-center justify-between gap-3 mb-4">
                   <SportChip sport={g.sport} />
-                  <span className="rounded-full bg-sidecar px-3 py-1 font-mono text-[10px] tracking-[.12em] text-ink">
-                    {gameTime(g.date) || g.status || "TODAY"} CT
-                  </span>
+                  <div className="text-right">
+                    <span className="rounded-full bg-sidecar px-3 py-1 font-mono text-[10px] tracking-[.12em] text-ink">
+                      {gameTime(g.date) || g.status || "TODAY"} CT
+                    </span>
+                    <div className="mt-2 font-mono text-[9px] tracking-[.12em] text-dim">SOURCE: {g.source}</div>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <div className="font-display text-xl">{g.awayTeam}</div>
@@ -145,7 +161,10 @@ export default async function UpdatesPage() {
             >
               <div className="flex items-center justify-between gap-3 mb-4">
                 <SportChip sport={g.sport} />
-                <span className="font-mono text-[10px] tracking-[.12em] text-dim">{g.status}</span>
+                <div className="text-right">
+                  <span className="font-mono text-[10px] tracking-[.12em] text-dim">{g.status}</span>
+                  <div className="mt-1 font-mono text-[9px] tracking-[.12em] text-dim">SOURCE: {g.source}</div>
+                </div>
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-4">
@@ -164,7 +183,9 @@ export default async function UpdatesPage() {
               )}
             </a>
           )) : (
-            <div className="panel rounded-[1.7rem] p-7 text-dim">No recent or live men&apos;s college football/basketball games found.</div>
+            <div className="panel rounded-[1.7rem] p-7 text-dim">
+            {data.health.scores === "unavailable" ? "Live score feed unavailable — do not treat this as no games." : "No verified recent or live games are available in the current feeds."}
+          </div>
           )}
         </div>
       </section>
@@ -192,7 +213,7 @@ export default async function UpdatesPage() {
           </div>
         ) : (
           <div className="panel rounded-[1.7rem] p-8 text-center text-dim">
-            No major men&apos;s college football or basketball news right now.
+            {data.health.news === "unavailable" ? "News feed unavailable — Film Room will not claim there is no news." : "No verified major news is available in the current feed."}
           </div>
         )}
       </section>
