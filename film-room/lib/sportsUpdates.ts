@@ -35,14 +35,19 @@ export type SportsUpdateContext = {
   generatedAt: string;
   news: SportsNewsItem[];
   scores: SportsScore[];
+  upcoming: SportsScore[];
   reelAlerts: ReelAlert[];
 };
 
 const ESPN = "https://site.api.espn.com/apis/site/v2/sports";
 const UA = { "user-agent": "FilmRoom/1.0 editorial dashboard" };
+const DISPLAY_TIME_ZONE = "America/Chicago";
 
 async function getJson(url: string) {
-  const res = await fetch(url, { headers: UA, next: { revalidate: 180 } });
+  const res = await fetch(url, {
+    headers: UA,
+    cache: "no-store",
+  });
   if (!res.ok) throw new Error(`Sports feed failed (${res.status})`);
   return res.json();
 }
@@ -53,15 +58,18 @@ function articleLink(item: any) {
 
 function parseNews(data: any, sport: "football" | "basketball"): SportsNewsItem[] {
   const rows = data?.articles ?? data?.feed ?? [];
-  return rows.slice(0, 12).map((a: any, i: number) => ({
-    id: String(a?.id ?? `${sport}-news-${i}`),
-    sport,
-    headline: String(a?.headline ?? a?.title ?? "").trim(),
-    description: String(a?.description ?? a?.story ?? "").replace(/<[^>]+>/g, "").trim(),
-    published: String(a?.published ?? a?.lastModified ?? a?.date ?? ""),
-    url: articleLink(a),
-    image: a?.images?.[0]?.url,
-  })).filter((x: SportsNewsItem) => x.headline);
+  return rows
+    .slice(0, 12)
+    .map((a: any, i: number) => ({
+      id: String(a?.id ?? `${sport}-news-${i}`),
+      sport,
+      headline: String(a?.headline ?? a?.title ?? "").trim(),
+      description: String(a?.description ?? a?.story ?? "").replace(/<[^>]+>/g, "").trim(),
+      published: String(a?.published ?? a?.lastModified ?? a?.date ?? ""),
+      url: articleLink(a),
+      image: a?.images?.[0]?.url,
+    }))
+    .filter((x: SportsNewsItem) => x.headline);
 }
 
 function parseScores(data: any, sport: "football" | "basketball"): SportsScore[] {
@@ -70,13 +78,17 @@ function parseScores(data: any, sport: "football" | "basketball"): SportsScore[]
     const competitors = comp?.competitors ?? [];
     const home = competitors.find((x: any) => x?.homeAway === "home") ?? competitors[0] ?? {};
     const away = competitors.find((x: any) => x?.homeAway === "away") ?? competitors[1] ?? {};
-    const leaders = (comp?.leaders ?? []).flatMap((group: any) =>
-      (group?.leaders ?? []).slice(0, 2).map((l: any) => {
-        const name = l?.athlete?.displayName ?? "";
-        const display = l?.displayValue ?? l?.value ?? "";
-        return [name, display].filter(Boolean).join(" — ");
-      })
-    ).filter(Boolean).slice(0, 4);
+    const leaders = (comp?.leaders ?? [])
+      .flatMap((group: any) =>
+        (group?.leaders ?? []).slice(0, 2).map((l: any) => {
+          const name = l?.athlete?.displayName ?? "";
+          const display = l?.displayValue ?? l?.value ?? "";
+          return [name, display].filter(Boolean).join(" — ");
+        })
+      )
+      .filter(Boolean)
+      .slice(0, 4);
+
     return {
       id: String(event?.id ?? `${sport}-score-${i}`),
       sport,
@@ -110,13 +122,16 @@ function buildReelAlerts(news: SportsNewsItem[], scores: SportsScore[]): ReelAle
   }
 
   for (const g of scores) {
-    const a = Number(g.awayScore);
-    const h = Number(g.homeScore);
-    if (!Number.isFinite(a) || !Number.isFinite(h) || !/final/i.test(g.status)) continue;
-    const margin = Math.abs(a - h);
+    const away = Number(g.awayScore);
+    const home = Number(g.homeScore);
+    if (!Number.isFinite(away) || !Number.isFinite(home) || !/final/i.test(g.status)) continue;
+
+    const margin = Math.abs(away - home);
     const close = margin <= (g.sport === "football" ? 7 : 6);
-    const huge = Math.max(a, h) >= (g.sport === "football" ? 45 : 95);
+    const huge = Math.max(away, home) >= (g.sport === "football" ? 45 : 95);
+
     if (!close && !huge && !g.leaders.length) continue;
+
     out.push({
       id: `game-${g.id}`,
       sport: g.sport,
@@ -131,7 +146,7 @@ function buildReelAlerts(news: SportsNewsItem[], scores: SportsScore[]): ReelAle
     });
   }
 
-  const rank = { NOW: 0, HIGH: 1, WATCH: 2 };
+  const rank: Record<ReelAlert["urgency"], number> = { NOW: 0, HIGH: 1, WATCH: 2 };
   return out.sort((a, b) => rank[a.urgency] - rank[b.urgency]).slice(0, 10);
 }
 
@@ -139,11 +154,27 @@ function compactDate(d: Date) {
   return d.toISOString().slice(0, 10).replace(/-/g, "");
 }
 
+function localDateKey(d: Date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: DISPLAY_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}${get("month")}${get("day")}`;
+}
+
+function isStartedGame(game: SportsScore) {
+  return /final|in progress|quarter|half|halftime|ot|end/i.test(game.status);
+}
+
 export async function getSportsUpdateContext(): Promise<SportsUpdateContext> {
   const now = new Date();
   const start = new Date(now.getTime() - 3 * 86400000);
   const end = new Date(now.getTime() + 1 * 86400000);
   const range = `${compactDate(start)}-${compactDate(end)}`;
+  const todayKey = localDateKey(now);
 
   const [cfbNews, cbbNews, cfbScores, cbbScores] = await Promise.all([
     getJson(`${ESPN}/football/college-football/news?limit=20`).catch(() => ({ articles: [] })),
@@ -155,16 +186,18 @@ export async function getSportsUpdateContext(): Promise<SportsUpdateContext> {
   const news = [...parseNews(cfbNews, "football"), ...parseNews(cbbNews, "basketball")]
     .sort((a, b) => Date.parse(b.published || "0") - Date.parse(a.published || "0"))
     .slice(0, 18);
+
   const allGames = [...parseScores(cfbScores, "football"), ...parseScores(cbbScores, "basketball")];
-  const isStarted = (g: SportsScore) => /final|in progress|quarter|half|ot|end/i.test(g.status);
+
   const scores = allGames
-    .filter(isStarted)
+    .filter(isStartedGame)
     .sort((a, b) => Date.parse(b.date || "0") - Date.parse(a.date || "0"))
     .slice(0, 24);
+
   const upcoming = allGames
-    .filter((g) => {
-      const gameDate = new Date(g.date);
-      return !Number.isNaN(gameDate.getTime()) && compactDate(gameDate) === today && !isStarted(g);
+    .filter((game) => {
+      const gameDate = new Date(game.date);
+      return !Number.isNaN(gameDate.getTime()) && localDateKey(gameDate) === todayKey && !isStartedGame(game);
     })
     .sort((a, b) => Date.parse(a.date || "0") - Date.parse(b.date || "0"));
 
@@ -172,23 +205,41 @@ export async function getSportsUpdateContext(): Promise<SportsUpdateContext> {
     generatedAt: now.toISOString(),
     news,
     scores,
+    upcoming,
     reelAlerts: buildReelAlerts(news, scores),
   };
 }
 
 export function sportsContextForPrompt(ctx: SportsUpdateContext) {
-  const news = ctx.news.slice(0, 10).map((n) =>
-    `[${n.sport}] ${n.headline} — ${n.description.slice(0, 180)}`
-  ).join("\\n");
-  const scores = ctx.scores.slice(0, 10).map((g) =>
-    `[${g.sport}] ${g.status}: ${g.awayTeam} ${g.awayScore} at ${g.homeTeam} ${g.homeScore}${g.leaders[0] ? ` | ${g.leaders[0]}` : ""}`
-  ).join("\\n");
-  const upcoming = ctx.upcoming.slice(0, 12).map((g) =>
-    `[${g.sport}] UPCOMING TODAY: ${g.awayTeam} at ${g.homeTeam} — ${g.status}`
-  ).join("\\n");
-  const alerts = ctx.reelAlerts.slice(0, 8).map((a) =>
-    `[${a.urgency}] [${a.sport}] ${a.title} — ${a.reason}`
-  ).join("\\n");
+  const news = ctx.news
+    .slice(0, 10)
+    .map((n) => `[${n.sport}] ${n.headline} — ${n.description.slice(0, 180)}`)
+    .join("\n");
 
-  return `REEL RADAR:\\n${alerts || "No urgent verified reel alerts."}\\n\\nUPCOMING TODAY:\\n${upcoming || "No upcoming college football/basketball games today."}\\n\\nRECENT SCORES:\\n${scores || "No recent college football/basketball scores."}\\n\\nLATEST NEWS:\\n${news || "No major college football/basketball news."}`;
+  const scores = ctx.scores
+    .slice(0, 10)
+    .map((g) => `[${g.sport}] ${g.status}: ${g.awayTeam} ${g.awayScore} at ${g.homeTeam} ${g.homeScore}${g.leaders[0] ? ` | ${g.leaders[0]}` : ""}`)
+    .join("\n");
+
+  const upcoming = ctx.upcoming
+    .slice(0, 12)
+    .map((g) => `[${g.sport}] UPCOMING TODAY: ${g.awayTeam} at ${g.homeTeam} — ${g.status}`)
+    .join("\n");
+
+  const alerts = ctx.reelAlerts
+    .slice(0, 8)
+    .map((a) => `[${a.urgency}] [${a.sport}] ${a.title} — ${a.reason}`)
+    .join("\n");
+
+  return `REEL RADAR:
+${alerts || "No urgent verified reel alerts."}
+
+UPCOMING TODAY:
+${upcoming || "No upcoming college football/basketball games today."}
+
+RECENT SCORES:
+${scores || "No recent college football/basketball scores."}
+
+LATEST NEWS:
+${news || "No major college football/basketball news."}`;
 }
