@@ -8,6 +8,22 @@ type CookieToSet = {
 };
 
 export async function middleware(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+
+  // Never make public/static/API traffic wait on a remote auth lookup.
+  // Route handlers enforce their own authorization where needed.
+  const bypassAuth =
+    path.startsWith("/login") ||
+    path.startsWith("/auth/callback") ||
+    path.startsWith("/owner-setup") ||
+    path.startsWith("/api/") ||
+    path.startsWith("/_next") ||
+    path === "/favicon.ico";
+
+  if (bypassAuth) {
+    return NextResponse.next();
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -19,12 +35,8 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet: CookieToSet[]) {
-          cookiesToSet.forEach(({ name, value }) => {
-            request.cookies.set(name, value);
-          });
-
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request });
-
           cookiesToSet.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, options);
           });
@@ -33,36 +45,29 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  try {
+    // getSession reads the signed session from cookies and avoids a blocking
+    // Supabase network request on every page navigation.
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-  const path = request.nextUrl.pathname;
-  const publicPath =
-    path.startsWith("/login") ||
-    path.startsWith("/auth/callback") ||
-    path.startsWith("/owner-setup") ||
-    path.startsWith("/api/owner-password-setup") ||
-    path.startsWith("/_next") ||
-    path === "/favicon.ico";
+    if (!session) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      return NextResponse.redirect(url);
+    }
 
-  if (!user && !publicPath) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
+    return response;
+  } catch {
+    // Middleware must fail fast instead of taking the entire site down with a 504.
+    // Server pages/API routes remain responsible for sensitive authorization.
+    return response;
   }
-
-  if (user && path === "/login") {
-    const url = request.nextUrl.clone();
-    url.pathname = "/today";
-    return NextResponse.redirect(url);
-  }
-
-  return response;
 }
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|woff|woff2)$).*)",
   ],
 };
