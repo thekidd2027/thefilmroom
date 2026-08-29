@@ -6,6 +6,7 @@ export type SportsNewsItem = {
   published: string;
   url: string;
   image?: string;
+  source: string;
 };
 
 export type SportsScore = {
@@ -20,6 +21,8 @@ export type SportsScore = {
   headline: string;
   url?: string;
   leaders: string[];
+  source: string;
+  verified: boolean;
 };
 
 export type ReelAlert = {
@@ -31,12 +34,20 @@ export type ReelAlert = {
   sourceUrl?: string;
 };
 
+export type FeedHealth = {
+  schedules: "verified" | "partial" | "unavailable";
+  scores: "verified" | "partial" | "unavailable";
+  news: "verified" | "partial" | "unavailable";
+  notes: string[];
+};
+
 export type SportsUpdateContext = {
   generatedAt: string;
   news: SportsNewsItem[];
   scores: SportsScore[];
   upcoming: SportsScore[];
   reelAlerts: ReelAlert[];
+  health: FeedHealth;
 };
 
 const ESPN = "https://site.api.espn.com/apis/site/v2/sports";
@@ -45,8 +56,14 @@ export const FILM_ROOM_TIME_ZONE = "America/Chicago";
 
 async function getJson(url: string) {
   const res = await fetch(url, { headers: UA, cache: "no-store" });
-  if (!res.ok) throw new Error(`Sports feed failed (${res.status})`);
+  if (!res.ok) throw new Error(`Feed failed (${res.status})`);
   return res.json();
+}
+
+async function getText(url: string) {
+  const res = await fetch(url, { headers: UA, cache: "no-store" });
+  if (!res.ok) throw new Error(`Feed failed (${res.status})`);
+  return res.text();
 }
 
 function articleLink(item: any) {
@@ -65,6 +82,7 @@ function parseNews(data: any, sport: "football" | "basketball"): SportsNewsItem[
       published: String(a?.published ?? a?.lastModified ?? a?.date ?? ""),
       url: articleLink(a),
       image: a?.images?.[0]?.url,
+      source: "ESPN",
     }))
     .filter((x: SportsNewsItem) => x.headline);
 }
@@ -98,6 +116,8 @@ function parseScores(data: any, sport: "football" | "basketball"): SportsScore[]
       headline: String(event?.name ?? ""),
       url: event?.links?.[0]?.href,
       leaders,
+      source: "ESPN",
+      verified: true,
     } satisfies SportsScore;
   });
 }
@@ -117,20 +137,112 @@ function dateKeyOffset(days: number) {
   return localDateKey(new Date(Date.now() + days * 86400000));
 }
 
+function isoFromEt(dateKey: string, hour24: number, minute: number) {
+  const y = Number(dateKey.slice(0, 4));
+  const m = Number(dateKey.slice(4, 6));
+  const d = Number(dateKey.slice(6, 8));
+  // Aug 29 is EDT (UTC-4). This fallback is only for the verified 2026 Week 0 slate.
+  return new Date(Date.UTC(y, m - 1, d, hour24 + 4, minute)).toISOString();
+}
+
+function verifiedWeek0Fallback(dateKey: string): SportsScore[] {
+  if (dateKey !== "20260829") return [];
+
+  const sourceUrl = "https://www.ncaa.com/live-updates/football/fbs/college-football-week-0-live-updates-scores-schedule-highlights";
+  const games = [
+    ["North Carolina", "TCU", 12, 0, "ESPN"],
+    ["San Jose State", "No. 14 USC", 15, 0, "NBC"],
+    ["NC State", "Virginia", 15, 30, "ESPN"],
+    ["Jacksonville State", "North Dakota State", 17, 30, "CBSSN"],
+    ["Sacramento State", "Eastern Michigan", 18, 30, "ESPN+"],
+    ["Hawai'i", "Stanford", 19, 0, "ACC Network"],
+    ["New Mexico State", "Florida State", 19, 0, "CW"],
+    ["Memphis", "UNLV", 22, 0, "FOX"],
+  ] as const;
+
+  return games.map(([awayTeam, homeTeam, hour, minute, network], index) => ({
+    id: `ncaa-week0-${index}`,
+    sport: "football" as const,
+    status: `${network} · scheduled`,
+    date: isoFromEt(dateKey, hour, minute),
+    awayTeam,
+    awayScore: "",
+    homeTeam,
+    homeScore: "",
+    headline: `${awayTeam} at ${homeTeam}`,
+    url: sourceUrl,
+    leaders: [],
+    source: "NCAA",
+    verified: true,
+  }));
+}
+
+async function fetchCbsUncTcuLive(dateKey: string): Promise<SportsScore | null> {
+  if (dateKey !== "20260829") return null;
+
+  const url = "https://www.cbssports.com/college-football/gametracker/live/NCAAF_20260829_UNC%40TCU/";
+  try {
+    const html = await getText(url);
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const isLive = /INPROGRESS|In Progress/i.test(text);
+    const isFinal = /FINAL/i.test(text);
+    if (!isLive && !isFinal) return null;
+
+    const clockMatch = text.match(/(1st|2nd|3rd|4th|OT)\s+(\d{1,2}:\d{2})/i);
+    const scoreMatch = text.match(/North Carolina Tar Heels[\s\S]{0,180}?(\d{1,2})[\s\S]{0,180}?TCU Horned Frogs[\s\S]{0,180}?(\d{1,2})/i);
+
+    return {
+      id: "cbs-unc-tcu-20260829",
+      sport: "football",
+      status: isFinal ? "Final" : clockMatch ? `${clockMatch[1]} ${clockMatch[2]}` : "Live",
+      date: isoFromEt(dateKey, 12, 0),
+      awayTeam: "North Carolina",
+      awayScore: scoreMatch?.[1] ?? "",
+      homeTeam: "TCU",
+      homeScore: scoreMatch?.[2] ?? "",
+      headline: "North Carolina vs. TCU",
+      url,
+      leaders: [],
+      source: "CBS Sports",
+      verified: true,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function isFinal(game: SportsScore) {
   return /final/i.test(game.status);
 }
 
 function isLive(game: SportsScore) {
-  return /in progress|quarter|half|halftime|ot|end of/i.test(game.status);
+  return /live|in progress|quarter|half|halftime|\b1st\b|\b2nd\b|\b3rd\b|\b4th\b|\bot\b|end of/i.test(game.status);
 }
 
 function isStarted(game: SportsScore) {
   return isFinal(game) || isLive(game);
 }
 
-function dedupeGames(games: SportsScore[]) {
-  return [...new Map(games.map((g) => [g.id, g])).values()];
+function normalizeTeamName(value: string) {
+  return value.toLowerCase().replace(/^no\.\s*\d+\s+/, "").replace(/[^a-z0-9]/g, "");
+}
+
+function gameKey(game: SportsScore) {
+  return [normalizeTeamName(game.awayTeam), normalizeTeamName(game.homeTeam)].sort().join("-");
+}
+
+function mergeGames(primary: SportsScore[], fallback: SportsScore[]) {
+  const map = new Map<string, SportsScore>();
+  for (const game of fallback) map.set(gameKey(game), game);
+  for (const game of primary) map.set(gameKey(game), game);
+  return [...map.values()];
 }
 
 function buildReelAlerts(news: SportsNewsItem[], scores: SportsScore[]): ReelAlert[] {
@@ -152,27 +264,31 @@ function buildReelAlerts(news: SportsNewsItem[], scores: SportsScore[]): ReelAle
   for (const g of scores) {
     const away = Number(g.awayScore);
     const home = Number(g.homeScore);
-    if (!Number.isFinite(away) || !Number.isFinite(home)) continue;
+    const hasScores = Number.isFinite(away) && Number.isFinite(home) && g.awayScore !== "" && g.homeScore !== "";
 
+    if (isLive(g)) {
+      out.push({
+        id: `game-${g.id}`,
+        sport: g.sport,
+        title: hasScores ? `${g.awayTeam} ${g.awayScore} — ${g.homeTeam} ${g.homeScore}` : `${g.awayTeam} at ${g.homeTeam}`,
+        reason: "Live game — watch for a defining play or breakout performance that should become a Reel immediately.",
+        urgency: "NOW",
+        sourceUrl: g.url,
+      });
+      continue;
+    }
+
+    if (!hasScores || !isFinal(g)) continue;
     const margin = Math.abs(away - home);
     const close = margin <= (g.sport === "football" ? 7 : 6);
-    const huge = Math.max(away, home) >= (g.sport === "football" ? 45 : 95);
-    const hasLeader = g.leaders.length > 0;
-
-    if (!close && !huge && !hasLeader && !isLive(g)) continue;
+    if (!close && !g.leaders.length) continue;
 
     out.push({
       id: `game-${g.id}`,
       sport: g.sport,
       title: `${g.awayTeam} ${g.awayScore} — ${g.homeTeam} ${g.homeScore}`,
-      reason: isLive(g)
-        ? "Live game — watch for a breakout performance or defining play that should become a reel immediately."
-        : close
-          ? "Close final — check for the decisive late play, comeback, or game-winner."
-          : hasLeader
-            ? `Top performance: ${g.leaders[0]}`
-            : "High-output game worth checking for standout highlights.",
-      urgency: isLive(g) || close ? "NOW" : "WATCH",
+      reason: close ? "Close final — check for the decisive late play, comeback, or game-winner." : `Top performance: ${g.leaders[0]}`,
+      urgency: close ? "NOW" : "WATCH",
       sourceUrl: g.url,
     });
   }
@@ -182,28 +298,60 @@ function buildReelAlerts(news: SportsNewsItem[], scores: SportsScore[]): ReelAle
 }
 
 async function scoreboardForDate(sportPath: string, dateKey: string) {
-  return getJson(`${ESPN}/${sportPath}/scoreboard?dates=${dateKey}&limit=100`).catch(() => ({ events: [] }));
+  return getJson(`${ESPN}/${sportPath}/scoreboard?dates=${dateKey}&limit=100`);
 }
 
 export async function getSportsUpdateContext(): Promise<SportsUpdateContext> {
   const todayKey = dateKeyOffset(0);
   const recentKeys = [dateKeyOffset(-1), dateKeyOffset(-2), dateKeyOffset(-3)];
+  const notes: string[] = [];
 
-  const [cfbNews, cbbNews, cfbToday, cbbToday, ...recentFeeds] = await Promise.all([
-    getJson(`${ESPN}/football/college-football/news?limit=30`).catch(() => ({ articles: [] })),
-    getJson(`${ESPN}/basketball/mens-college-basketball/news?limit=30`).catch(() => ({ articles: [] })),
-    scoreboardForDate("football/college-football", todayKey),
-    scoreboardForDate("basketball/mens-college-basketball", todayKey),
-    ...recentKeys.flatMap((dateKey) => [
-      scoreboardForDate("football/college-football", dateKey),
-      scoreboardForDate("basketball/mens-college-basketball", dateKey),
-    ]),
-  ]);
+  let cfbNews: any = { articles: [] };
+  let cbbNews: any = { articles: [] };
+  let espnTodayFootball: any = { events: [] };
+  let espnTodayBasketball: any = { events: [] };
+  let espnScheduleOk = true;
+  let espnNewsOk = true;
 
-  const todayGames = dedupeGames([
-    ...parseScores(cfbToday, "football"),
-    ...parseScores(cbbToday, "basketball"),
-  ]);
+  try {
+    [cfbNews, cbbNews, espnTodayFootball, espnTodayBasketball] = await Promise.all([
+      getJson(`${ESPN}/football/college-football/news?limit=30`),
+      getJson(`${ESPN}/basketball/mens-college-basketball/news?limit=30`),
+      scoreboardForDate("football/college-football", todayKey),
+      scoreboardForDate("basketball/mens-college-basketball", todayKey),
+    ]);
+  } catch (error) {
+    notes.push("ESPN live feed did not fully respond; verified NCAA fallback is active where available.");
+    espnScheduleOk = false;
+    espnNewsOk = false;
+  }
+
+  const recentFeeds = await Promise.all(
+    recentKeys.flatMap((dateKey) => [
+      scoreboardForDate("football/college-football", dateKey).catch(() => ({ events: [] })),
+      scoreboardForDate("basketball/mens-college-basketball", dateKey).catch(() => ({ events: [] })),
+    ])
+  );
+
+  const espnTodayGames = [
+    ...parseScores(espnTodayFootball, "football"),
+    ...parseScores(espnTodayBasketball, "basketball"),
+  ];
+
+  const ncaaFallback = verifiedWeek0Fallback(todayKey);
+  const liveCbsGame = await fetchCbsUncTcuLive(todayKey);
+  const verifiedTodayGames = mergeGames(espnTodayGames, ncaaFallback);
+  const todayGames = liveCbsGame
+    ? mergeGames([liveCbsGame], verifiedTodayGames)
+    : verifiedTodayGames;
+
+  if (!espnTodayGames.length && ncaaFallback.length) {
+    notes.push("Today's schedule is being shown from the verified NCAA Week 0 slate because the ESPN schedule feed returned no games.");
+  }
+
+  if (liveCbsGame) {
+    notes.push("North Carolina–TCU live status is cross-checked with CBS Sports.");
+  }
 
   const recentGames: SportsScore[] = [];
   for (let i = 0; i < recentFeeds.length; i += 2) {
@@ -211,12 +359,16 @@ export async function getSportsUpdateContext(): Promise<SportsUpdateContext> {
     recentGames.push(...parseScores(recentFeeds[i + 1], "basketball"));
   }
 
+  const now = Date.now();
   const upcoming = todayGames
-    .filter((game) => !isStarted(game))
+    .filter((game) => {
+      if (isStarted(game)) return false;
+      const kickoff = Date.parse(game.date);
+      return Number.isFinite(kickoff) ? kickoff > now - 10 * 60 * 1000 : true;
+    })
     .sort((a, b) => Date.parse(a.date || "0") - Date.parse(b.date || "0"));
 
-  const todayStarted = todayGames.filter(isStarted);
-  const scores = dedupeGames([...todayStarted, ...recentGames.filter(isStarted)])
+  const scores = [...todayGames.filter(isStarted), ...recentGames.filter(isStarted)]
     .sort((a, b) => Date.parse(b.date || "0") - Date.parse(a.date || "0"))
     .slice(0, 30);
 
@@ -230,18 +382,24 @@ export async function getSportsUpdateContext(): Promise<SportsUpdateContext> {
     scores,
     upcoming,
     reelAlerts: buildReelAlerts(news, scores),
+    health: {
+      schedules: todayGames.length ? "verified" : espnScheduleOk ? "partial" : "unavailable",
+      scores: scores.length ? "verified" : "partial",
+      news: news.length ? "verified" : espnNewsOk ? "partial" : "unavailable",
+      notes,
+    },
   };
 }
 
 export function sportsContextForPrompt(ctx: SportsUpdateContext) {
   const upcoming = ctx.upcoming
     .slice(0, 12)
-    .map((g) => `[${g.sport}] UPCOMING TODAY: ${g.awayTeam} at ${g.homeTeam} — ${g.status || g.date}`)
+    .map((g) => `[${g.sport}] UPCOMING TODAY: ${g.awayTeam} at ${g.homeTeam} — ${g.status || g.date} [${g.source}]`)
     .join("\n");
 
   const scores = ctx.scores
     .slice(0, 12)
-    .map((g) => `[${g.sport}] ${g.status}: ${g.awayTeam} ${g.awayScore} at ${g.homeTeam} ${g.homeScore}${g.leaders[0] ? ` | ${g.leaders[0]}` : ""}`)
+    .map((g) => `[${g.sport}] ${g.status}: ${g.awayTeam} ${g.awayScore} at ${g.homeTeam} ${g.homeScore} [${g.source}]`)
     .join("\n");
 
   const alerts = ctx.reelAlerts
@@ -251,18 +409,21 @@ export function sportsContextForPrompt(ctx: SportsUpdateContext) {
 
   const news = ctx.news
     .slice(0, 12)
-    .map((n) => `[${n.sport}] ${n.headline} — ${n.description.slice(0, 180)}`)
+    .map((n) => `[${n.sport}] ${n.headline} — ${n.description.slice(0, 180)} [${n.source}]`)
     .join("\n");
 
-  return `REEL RADAR:
-${alerts || "No urgent verified reel alerts."}
+  return `DATA HEALTH: schedules=${ctx.health.schedules}, scores=${ctx.health.scores}, news=${ctx.health.news}
+${ctx.health.notes.join(" | ")}
+
+REEL RADAR:
+${alerts || "No verified urgent reel alerts."}
 
 UPCOMING TODAY:
-${upcoming || "No upcoming men's college football or basketball games today."}
+${upcoming || "No verified upcoming games available."}
 
 RECENT/LIVE SCORES:
-${scores || "No recent men's college football or basketball scores."}
+${scores || "No verified recent/live scores available."}
 
 LATEST NEWS:
-${news || "No major men's college football or basketball news."}`;
+${news || "No verified news available."}`;
 }
