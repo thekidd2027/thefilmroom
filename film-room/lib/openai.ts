@@ -211,7 +211,7 @@ export async function scoreVideoCandidates(
   }));
 
   const text = await claude(
-    `${brainPrompt(brandBrain)}\nStory: ${JSON.stringify(story)}\nScore each source candidate for usefulness in telling THIS EXACT story. CAPTION SCOPE IS A HARD GATE: a source about the wrong game, wrong season, wrong team/player, or only loosely related should score very low or be blocked. Prefer original/official broadcast uploads, conference/team/NCAA sources, or full highlight packages with announcer audio. A YouTube Short, Reel-style edit, fan montage, mixtape, TikTok repost, creator compilation, or derivative social edit should be BLOCKED as a primary source even when popular. "rightsRisk" must be clear/caution/blocked; ordinary broadcast/highlight footage is usually caution unless explicit reuse permission is evident. Return ONLY JSON {"candidates":[...]}. Candidate order must match input order. Fields: headline,sport,summary,wowFactor,storyValue,brandFit,verticalViability,rightsRisk,rightsReason.\n${JSON.stringify(payload)}`,
+    `${brainPrompt(brandBrain)}\nStory: ${JSON.stringify(story)}\nScore each source candidate for usefulness in telling THIS EXACT story in a simple ~20-second Film Room edit. CAPTION SCOPE IS A HARD GATE: wrong game, wrong season, wrong player/team, or loosely related footage should be blocked. Strongly prefer ONE long-form broadcast/official highlight video that contains the actual sequence or best highlights, original announcer commentary, and enough watchable material to carry the reel by itself. Reward coherent, enjoyable sequences where a viewer wants to see what happens next (for example a bizarre ending, comeback, rivalry moment, or a player taking over). A YouTube Short, Reel-style edit, fan montage, mixtape, TikTok repost, creator compilation, or derivative social edit should be BLOCKED as a primary source even when popular. "rightsRisk" must be clear/caution/blocked; ordinary broadcast/highlight footage is usually caution unless explicit reuse permission is evident. Return ONLY JSON {"candidates":[...]}. Candidate order must match input order. Fields: headline,sport,summary,wowFactor,storyValue,brandFit,verticalViability,rightsRisk,rightsReason.\n${JSON.stringify(payload)}`,
     { model: MODEL, maxTokens: 4500 }
   );
 
@@ -249,37 +249,71 @@ export async function buildGroundedRecipe(
     url: `https://www.youtube.com/watch?v=${s.search.videoId}`,
     durationSeconds: s.stats.durationSeconds,
     views: s.stats.viewCount,
-    transcript: transcriptToText(s.transcript, 12_000),
+    transcript: transcriptToText(s.transcript, 18_000),
     visualInspection: s.visuals,
   }));
 
   const text = await claude(
     `${brainPrompt(brandBrain)}
-Build the final editor-ready recipe for this story: ${JSON.stringify(story)}
-Ground every clip timestamp in the transcript and/or visual inspection provided. Do not invent. THE CAPTION IS A CONTRACT: every primary clip must prove the exact player/team/game/season/career/rivalry/moment promised by the story. Never use a cooler clip from outside that scope. PRIMARY HIGHLIGHTS must come from broadcast/official highlight footage with original announcer commentary whenever the source provides audio. Supporting crowd/fan/field-level/alternate-angle footage may lack announcer audio, but supporting footage must never replace the broadcast-highlight foundation. Do not use YouTube Shorts, Reel-style edits, fan montages, mixtapes, TikTok reposts, or creator-made derivative compilations as primary footage. Prefer multiple legitimate source videos and alternate angles when they materially improve the story. For rivalry/matchup reels conflict is allowed.
+Build ONE simple, highly watchable Film Room reel for this story: ${JSON.stringify(story)}
 
-Choose 4-7 PRIMARY clips in exact story order and EXACTLY 3 replacements. Replacements must name primary order numbers they can replace. Each primary should usually be 1-5 seconds in the final reel, even if the source window is longer. Give CapCut 9:16 keyframe instructions as x/y percentages and scale percentage, only when useful.
+CORE EDITING PHILOSOPHY:
+- The editor should normally need ONE YouTube source video, not a montage assembled from many videos.
+- Pick the single best source from the supplied sources. Every PRIMARY clip must use that SAME video_id.
+- The chosen source should be long-form broadcast/official highlight footage with original announcer audio, never a YouTube Short, Reel-style edit, TikTok repost, fan montage, mixtape, or creator compilation.
+- The final reel should usually be about 18-24 seconds.
+- Simplicity is good. If one continuous 18-24 second stretch tells the story, use ONE primary clip. If the moment needs setup/payoff, use 2-3 timestamp windows FROM THE SAME VIDEO.
+- The sequence must be genuinely enjoyable to watch and must make a viewer want to see what happens next.
+- THE CAPTION IS A CONTRACT. Every second shown must match the exact player/team/game/season/career/rivalry/moment promised by the story.
+- Keep the original announcer call audible. Music is underneath the broadcast audio, never a replacement for it.
+- Ground every timestamp in the supplied transcript and/or visual inspection. NEVER invent timestamps.
+- For PLAYER_SPOTLIGHT, TEAM_SCHOOL_SPOTLIGHT, and MOMENT_GAME, do not add interview material.
+- For STORY only, the opening interview must be verified and the following highlights must directly support what was said.
 
-Music: exactly 3 real song suggestions within the Film Room palette; rank 1-3. These are creative suggestions for use through platform-licensed music where available. Never claim sync rights.
+SOURCE SELECTION:
+Choose exactly one primary source video. You may list up to two backup source videos in story_research popularity_evidence only as optional references, but replacement_clips should normally be empty. Do not mix primary footage across sources.
 
-Return ONLY JSON with this shape:
-{"caption":"","cover_text":"","template_name":"MOMENT|FEELING|STORY|TAKE","target_length_seconds":24,
-"primary_clips":[{"video_id":"","title":"","channel_title":"","start_seconds":0,"end_seconds":0,"moment":"","story_function":"","camera_angle":"","rights_note":""}],
-"replacement_clips":[{"video_id":"","title":"","channel_title":"","start_seconds":0,"end_seconds":0,"moment":"","story_function":"","camera_angle":"","rights_note":"","can_replace":[1]}],
-"edit_notes":[{"order":1,"source_video_id":"","source_start_seconds":0,"source_end_seconds":0,"shot":"","purpose":"","on_screen_text":"","audio_note":"","keyframes":[{"at_seconds":0,"x":50,"y":50,"scale":150,"note":"center QB"}]}],
-"music_options":[{"title":"","artist":"","source":"Instagram/YouTube licensed music library if available","note":"","rank":1}],
-"story_research":{"why_today":"","viewer_feeling":"","popularity_evidence":[""],"trend_sources":[{"label":"","url":""}],"fan_allegiance_logic":"","seasonal_fit":""}}
+TIMING:
+Aim for 18-24 total seconds. Prefer 1-3 primary timestamp windows from the chosen source. A weird/legendary ending such as a penalty -> missed kick -> reaction can simply unfold in chronological order.
+
+Music: exactly 3 real song suggestions within the Film Room palette, ranked 1-3. Keep announcer audio prominent.
+
+Return ONLY JSON:
+{
+  "caption":"",
+  "cover_text":"",
+  "template_name":"",
+  "target_length_seconds":20,
+  "primary_clips":[
+    {"video_id":"","title":"","channel_title":"","start_seconds":0,"end_seconds":0,"moment":"","story_function":"","camera_angle":"broadcast","rights_note":"Broadcast footage; verify reuse rights."}
+  ],
+  "replacement_clips":[],
+  "edit_notes":[
+    {"order":1,"source_video_id":"","source_start_seconds":0,"source_end_seconds":0,"shot":"","purpose":"","on_screen_text":"","audio_note":"KEEP ORIGINAL ANNOUNCER AUDIO; music low underneath","keyframes":[]}
+  ],
+  "music_options":[
+    {"title":"","artist":"","source":"Instagram/YouTube licensed music library if available","note":"","rank":1}
+  ],
+  "story_research":{
+    "why_today":"",
+    "viewer_feeling":"",
+    "popularity_evidence":[""],
+    "trend_sources":[{"label":"","url":""}],
+    "fan_allegiance_logic":"",
+    "seasonal_fit":""
+  }
 }
 
-Sources:\n${JSON.stringify(sourcePayload)}`,
-    { model: MODEL, maxTokens: 9000 }
+Sources:
+${JSON.stringify(sourcePayload)}`,
+    { model: MODEL, maxTokens: 6500 }
   );
 
   const recipe = parseJson<ReelRecipe>(text, {
     caption: "",
     cover_text: "",
-    template_name: story.template,
-    target_length_seconds: 22,
+    template_name: String(story.template ?? ""),
+    target_length_seconds: 20,
     primary_clips: [],
     replacement_clips: [],
     edit_notes: [],
@@ -295,28 +329,56 @@ Sources:\n${JSON.stringify(sourcePayload)}`,
   });
 
   const sourceById = new Map(sources.map((s) => [s.search.videoId, s]));
+  const requestedVideoId = recipe.primary_clips?.[0]?.video_id;
+  const selectedSource = (requestedVideoId && sourceById.get(requestedVideoId))
+    ? sourceById.get(requestedVideoId)!
+    : sources[0];
+
+  if (!selectedSource) return recipe;
+
+  const selectedVideoId = selectedSource.search.videoId;
   const decorate = (clip: any): ClipRef => {
-    const src = sourceById.get(clip.video_id);
     const start = Math.max(0, Number(clip.start_seconds ?? 0));
     const end = Math.max(start + 0.5, Number(clip.end_seconds ?? start + 3));
     return {
       ...clip,
-      title: clip.title || src?.search.title || "Source clip",
-      channel_title: clip.channel_title || src?.search.channelTitle,
-      source_url: `https://www.youtube.com/watch?v=${clip.video_id}`,
+      video_id: selectedVideoId,
+      title: selectedSource.search.title,
+      channel_title: selectedSource.search.channelTitle,
+      source_url: `https://www.youtube.com/watch?v=${selectedVideoId}`,
       start_seconds: start,
       end_seconds: end,
-      direct_url: youtubeTimestampUrl(clip.video_id, start),
+      direct_url: youtubeTimestampUrl(selectedVideoId, start),
+      camera_angle: clip.camera_angle || "broadcast",
+      rights_note: clip.rights_note || "Broadcast/official highlight footage; verify reuse rights before publishing.",
     };
   };
 
-  recipe.primary_clips = (recipe.primary_clips ?? []).map(decorate);
-  recipe.replacement_clips = (recipe.replacement_clips ?? []).slice(0, 3).map(decorate);
-  recipe.edit_notes = (recipe.edit_notes ?? []).map((n: any, idx) => ({
-    ...n,
-    order: Number(n.order ?? idx + 1),
-    direct_url: youtubeTimestampUrl(n.source_video_id, Number(n.source_start_seconds ?? 0)),
-  }));
+  recipe.primary_clips = (recipe.primary_clips ?? [])
+    .slice(0, 3)
+    .map(decorate)
+    .filter((clip) => clip.end_seconds > clip.start_seconds);
+
+  recipe.replacement_clips = [];
+  recipe.target_length_seconds = Math.max(12, Math.min(28, Number(recipe.target_length_seconds ?? 20)));
+
+  recipe.edit_notes = (recipe.edit_notes ?? [])
+    .slice(0, 3)
+    .map((note: any, index) => {
+      const matchingClip = recipe.primary_clips[index] ?? recipe.primary_clips[0];
+      const start = matchingClip?.start_seconds ?? Number(note.source_start_seconds ?? 0);
+      const end = matchingClip?.end_seconds ?? Number(note.source_end_seconds ?? start + 3);
+      return {
+        ...note,
+        order: index + 1,
+        source_video_id: selectedVideoId,
+        source_start_seconds: start,
+        source_end_seconds: end,
+        direct_url: youtubeTimestampUrl(selectedVideoId, start),
+        audio_note: note.audio_note || "KEEP ORIGINAL ANNOUNCER AUDIO; music low underneath.",
+      };
+    });
+
   recipe.music_options = (recipe.music_options ?? []).slice(0, 3).sort((a, b) => a.rank - b.rank);
   recipe.story_research = {
     ...recipe.story_research,
