@@ -170,13 +170,16 @@ export async function getSportsUpdateContext(): Promise<SportsUpdateContext> {
 export function sportsContextForPrompt(ctx: SportsUpdateContext) {
   const news = ctx.news.slice(0, 10).map((n) =>
     `[${n.sport}] ${n.headline} — ${n.description.slice(0, 180)}`
-  ).join("\n");
+  ).join("\\n");
   const scores = ctx.scores.slice(0, 10).map((g) =>
     `[${g.sport}] ${g.status}: ${g.awayTeam} ${g.awayScore} at ${g.homeTeam} ${g.homeScore}${g.leaders[0] ? ` | ${g.leaders[0]}` : ""}`
-  ).join("\n");
-  const upcoming = ctx.upcoming.slice(0, 12).map((g) =>\n    `[${g.sport}] UPCOMING TODAY: ${g.awayTeam} at ${g.homeTeam} — ${g.status}`\n  ).join("\\n");\n  const alerts = ctx.reelAlerts.slice(0, 8).map((a) =>
+  ).join("\\n");
+  const upcoming = ctx.upcoming.slice(0, 12).map((g) =>
+    `[${g.sport}] UPCOMING TODAY: ${g.awayTeam} at ${g.homeTeam} — ${g.status}`
+  ).join("\\n");
+  const alerts = ctx.reelAlerts.slice(0, 8).map((a) =>
     `[${a.urgency}] [${a.sport}] ${a.title} — ${a.reason}`
-  ).join("\n");
+  ).join("\\n");
 
-  return `REEL RADAR:\n${alerts || "No urgent verified reel alerts."}\n\nRECENT SCORES:\n${scores || "No recent college football/basketball scores."}\n\nLATEST NEWS:\n${news || "No major college football/basketball news."}`;
+  return `REEL RADAR:\\n${alerts || "No urgent verified reel alerts."}\\n\\nUPCOMING TODAY:\\n${upcoming || "No upcoming college football/basketball games today."}\\n\\nRECENT SCORES:\\n${scores || "No recent college football/basketball scores."}\\n\\nLATEST NEWS:\\n${news || "No major college football/basketball news."}`;
 }
